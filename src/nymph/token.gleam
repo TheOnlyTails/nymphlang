@@ -33,7 +33,8 @@ pub type NymphToken {
   StringChar(value: UtfCodepoint)
   StringEscape(value: expr.EscapeSequence)
   StringUnicode(value: Int)
-  StringInterpolation(value: expr.Expr)
+  StringInterpolationStart
+  StringInterpolationEnd
   StringEnd
 
   Identifier(value: String)
