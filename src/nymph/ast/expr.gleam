@@ -1,8 +1,8 @@
+import gleam/dict.{type Dict}
+import gleam/option.{type Option}
 import nymph/ast/operators
 import nymph/ast/types.{type GenericArg, type GenericParam, type Type}
 import nymph/ast/utils.{type Ident}
-import gleam/dict.{type Dict}
-import gleam/option.{type Option}
 
 pub type Statement {
   Expr(Expr)

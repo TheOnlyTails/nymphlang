@@ -1,5 +1,5 @@
-import nymph/ast/utils.{type Ident}
 import gleam/option.{type Option}
+import nymph/ast/utils.{type Ident}
 
 pub type Type {
   IntType

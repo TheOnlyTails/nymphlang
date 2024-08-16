@@ -1,8 +1,8 @@
+import gleam/dict.{type Dict}
+import gleam/option.{type Option}
 import nymph/ast/expr.{type Expr, type Pattern}
 import nymph/ast/types.{type GenericArg, type GenericParam, type Type}
 import nymph/ast/utils.{type Ident}
-import gleam/dict.{type Dict}
-import gleam/option.{type Option}
 
 pub type Module {
   Module(members: List(Declaration))
@@ -16,10 +16,12 @@ pub type Declaration {
   ///
   /// ```
   /// import std/math
+  /// 
+  /// // can be used like so:
   /// math.sin(math.pi) // 0
   ///
   /// import std/math with (sin as sine, cos as cosine, tan as tangent)
-	/// ```
+  /// ```
   Import(path: List(Ident), idents: Option(Dict(Ident, Option(Ident))))
   /// Redefines a type with a new name.
   /// ```
@@ -62,20 +64,20 @@ pub type Declaration {
     fields: List(StructField),
     members: List(StructInnerMember),
   )
-	/// An algebraic sum type, containing multiple named variants,
-	/// each having an associated constructor and fields.
-	/// 
-	/// ```
-	/// enum Option<T> {
-	/// 	Some(T),
-	/// 	None
-	/// 
-	/// 	func map<R>(f: (T) -> R) -> match this {
-	/// 		Some(it) -> Some(f(it)),
-	/// 		None -> None
-	/// 	}
-	/// }
-	/// ```
+  /// An algebraic sum type, containing multiple named variants,
+  /// each having an associated constructor and fields.
+  /// 
+  /// ```
+  /// enum Option<T> {
+  /// 	Some(T),
+  /// 	None
+  /// 
+  /// 	func map<R>(f: (T) -> R) -> match this {
+  /// 		Some(it) -> Some(f(it)),
+  /// 		None -> None
+  /// 	}
+  /// }
+  /// ```
   Enum(
     visibility: Option(Visibility),
     name: Ident,
