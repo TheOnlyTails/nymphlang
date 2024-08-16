@@ -5,5 +5,5 @@ import nymph/lexer
 pub fn main() {
   let lex = lexer.lexer()
 
-  chomp.run_advanced("", lexer.Normal, lex) |> io.debug
+  chomp.run_advanced("\"${\"${$}\"}\"", lexer.Normal(0), lex) |> io.debug
 }
