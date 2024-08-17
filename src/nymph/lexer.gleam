@@ -363,16 +363,16 @@ fn string_regular() {
 }
 
 fn then_try(
-  matcher: lexer.Matcher(a, mode),
+  matcher: fn(mode, String, String) -> lexer.Match(a, mode),
   f: fn(a, mode) -> Result(#(c, mode), Nil),
 ) -> lexer.Matcher(c, mode) {
   use mode, lexeme, lookahead <- lexer.custom
 
-  case matcher.run(mode, lexeme, lookahead) {
-    lexer.Keep(value, mode) ->
-      case f(value, mode) {
-        Ok(#(value, mode)) -> lexer.Keep(value, mode)
-        _ -> lexer.NoMatch
+  case matcher(mode, lexeme, lookahead) {
+    lexer.Keep(val, mode) ->
+      case f(val, mode) {
+        Ok(#(val, mode)) -> lexer.Keep(val, mode)
+        Error(_) -> lexer.NoMatch
       }
     lexer.Skip -> lexer.Skip
     lexer.Drop(mode) -> lexer.Drop(mode)
@@ -383,11 +383,12 @@ fn then_try(
 fn regex_lexer_options(check: String, stop: String, options: regex.Options) {
   let assert Ok(check) = regex.compile(check, options)
   let assert Ok(stop) = regex.compile(stop, options)
-  use mode, lexeme, lookahead <- lexer.custom
 
-  case !regex.check(stop, lookahead) && regex.check(check, lexeme) {
-    True -> lexer.Keep(lexeme, mode)
-    False -> lexer.NoMatch
+  fn(mode, lexeme, lookahead) {
+    case !regex.check(stop, lookahead) && regex.check(check, lexeme) {
+      True -> lexer.Keep(lexeme, mode)
+      False -> lexer.NoMatch
+    }
   }
 }
 
