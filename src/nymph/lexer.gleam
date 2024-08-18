@@ -17,10 +17,11 @@ pub type LexMode {
 
 fn reserved() -> set.Set(String) {
   [
-    "true", "false", "public", "internal", "private", "import", "with", "type",
-    "struct", "enum", "impl", "interface", "namespace", "for", "while", "match",
-    "if", "else", "int", "float", "char", "string", "boolean", "void", "never",
-    "as", "is", "in", "continue", "break", "return", "this", "_",
+    "true", "false", "public", "internal", "private", "import", "with", "let",
+    "mut", "type", "struct", "enum", "impl", "interface", "namespace", "for",
+    "while", "match", "if", "else", "int", "float", "char", "string", "boolean",
+    "void", "never", "as", "is", "in", "continue", "break", "return", "this",
+    "_",
   ]
   |> set.from_list
 }
@@ -110,8 +111,8 @@ pub fn lexer() -> lexer.Lexer(NymphToken, LexMode) {
         lexer.token(",", token.Comma),
         lexer.token(":", token.Colon),
         lexer.keyword("_", "\\P{XID_Start}", token.Underscore),
-        lexer.token("++", token.Increment),
-        lexer.token("--", token.Decrement),
+        lexer.token("++", token.PlusPlus),
+        lexer.token("--", token.MinusMinus),
         lexer.keyword("!", "[^i=]", token.ExclamationMark),
         lexer.keyword("+", "[^+=]", token.Plus),
         lexer.keyword("-", "[^-=]", token.Minus),
@@ -171,6 +172,17 @@ pub fn lexer() -> lexer.Lexer(NymphToken, LexMode) {
       ]
     }
   })
+}
+
+pub fn run(source: String) {
+  lexer.run_advanced(source, Normal(0), lexer())
+  |> result.map(list.filter(_, keeping: fn(tok: lexer.Token(NymphToken)) {
+    case tok.value {
+      token.Comment(_) | token.CommentMultiline(_) | token.Whitespace(_) ->
+        False
+      _ -> True
+    }
+  }))
 }
 
 fn number_lexer(
