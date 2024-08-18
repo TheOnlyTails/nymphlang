@@ -14,7 +14,7 @@ pub type Type {
   ListType(item: Type)
   TupleType(members: List(Type))
   MapType(key: Type, value: Type)
-  Func(params: List(Type), return: Type)
+  FuncType(params: List(Type), return_type: Type)
   Reference(name: Ident, generics: List(GenericArg))
   GroupedType(value: Type)
 }

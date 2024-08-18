@@ -130,9 +130,9 @@ pub type NymphToken {
   /// _
   Underscore
   /// ++
-  Increment
+  PlusPlus
   /// --
-  Decrement
+  MinusMinus
   /// !
   ExclamationMark
   /// +

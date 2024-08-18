@@ -23,6 +23,8 @@ pub type Declaration {
   /// import std/math with (sin as sine, cos as cosine, tan as tangent)
   /// ```
   Import(path: List(Ident), idents: Option(Dict(Ident, Option(Ident))))
+  Let(meta: LetDeclaration, value: Expr)
+  Func(meta: FuncDeclaration, body: Expr)
   /// Redefines a type with a new name.
   /// ```
   /// type VeryVeryNested = #[#(#{#[int]: #(string, float)}, #[boolean)] // don't do this
@@ -85,6 +87,12 @@ pub type Declaration {
     variants: List(EnumVariant),
     members: List(StructInnerMember),
   )
+  Namespace(
+    visibility: Option(Visibility),
+    name: Ident,
+    generics: List(GenericParam),
+    members: List(ImplMember),
+  )
   Interface(
     visibility: Option(Visibility),
     name: Ident,
@@ -114,14 +122,6 @@ pub type Declaration {
     type_: Type,
     members: List(ImplMember),
   )
-  Namespace(
-    visibility: Option(Visibility),
-    name: Ident,
-    generics: List(GenericParam),
-    members: List(ImplMember),
-  )
-  Let(meta: LetDeclaration, value: Expr)
-  Func(meta: FuncDeclaration, body: Expr)
 }
 
 pub type Visibility {
