@@ -96,15 +96,46 @@ fn parse_import() {
 fn parse_expr() {
   pratt.expression(
     one_of: [
-      fn(_) { parse_int() |> chomp.map(expr.Int) },
-      fn(_) { parse_float() |> chomp.map(expr.Float) },
-      fn(_) { parse_char() |> chomp.map(expr.Char) },
-      fn(_) { parse_boolean() |> chomp.map(expr.Boolean) },
+      // function call
+      fn(config) {
+        let call_arg =
+          chomp.lazy(fn() {
+            use name <- do(
+              optional({
+                use name <- do(parse_identifier())
+                use _ <- do(token(token.Eq))
+                return(name)
+              }),
+            )
+            use spread <- do(
+              optional(token(token.Spread)) |> chomp.map(option.is_some),
+            )
+            use value <- do(pratt.sub_expression(config, 0))
+
+            return(expr.CallArg(name:, spread:, value:))
+          })
+        use func <- do(pratt.sub_expression(config, 15))
+        use generics <- do(chomp.or(parse_generic_args(), []))
+        use args <- do(delimited(
+          token(token.LParen),
+          sequence_trailing(call_arg, token(token.Comma)),
+          token(token.RParen),
+        ))
+
+        return(expr.Call(func:, generics:, args:))
+      },
+      // negate number
       pratt.prefix(12, token(token.Minus), expr.PrefixOp(operators.Negate, _)),
+      // boolean NOT
       pratt.prefix(12, token(token.ExclamationMark), expr.PrefixOp(
         operators.Not,
         _,
       )),
+      fn(_) { parse_int() |> chomp.map(expr.Int) },
+      fn(_) { parse_float() |> chomp.map(expr.Float) },
+      fn(_) { parse_char() |> chomp.map(expr.Char) },
+      fn(_) { parse_boolean() |> chomp.map(expr.Boolean) },
+      fn(config) { parse_string(config) |> chomp.map(expr.String) },
     ],
     and_then: [
       pratt.postfix(12, token(token.PlusPlus), expr.PostfixOp(
@@ -152,41 +183,42 @@ fn parse_type() {
       fn(_) { token(token.Underscore) |> chomp.replace(types.InferType) },
       // list type
       fn(config) {
-        use _ <- do(token(token.ListStart))
-        use it <- do(pratt.sub_expression(config, 0))
-        use _ <- do(token(token.RBracket))
-
-        return(types.ListType(it))
+        delimited(
+          token(token.ListStart),
+          pratt.sub_expression(config, 0),
+          token(token.RBracket),
+        )
+        |> chomp.map(types.ListType)
       },
       // map type
       fn(config) {
-        use _ <- do(token(token.MapStart))
-        use key <- do(pratt.sub_expression(config, 0))
-        use _ <- do(token(token.Colon))
-        use value <- do(pratt.sub_expression(config, 0))
-        use _ <- do(token(token.RBrace))
-
-        return(types.MapType(key, value))
+        delimited(
+          token(token.MapStart),
+          {
+            use key <- do(pratt.sub_expression(config, 0))
+            use _ <- do(token(token.Colon))
+            use value <- do(pratt.sub_expression(config, 0))
+            return(types.MapType(key, value))
+          },
+          token(token.RBrace),
+        )
       },
       // tuple type
       fn(config) {
-        use _ <- do(token(token.TupleStart))
-        use elements <- do(sequence_trailing(
-          pratt.sub_expression(config, 0),
-          token(token.Comma),
-        ))
-        use _ <- do(token(token.RParen))
-
-        return(types.TupleType(elements))
+        delimited(
+          token(token.TupleStart),
+          sequence_trailing(pratt.sub_expression(config, 0), token(token.Comma)),
+          token(token.RParen),
+        )
+        |> chomp.map(types.TupleType)
       },
       // function type
       fn(config) {
-        use _ <- do(token(token.LParen))
-        use params <- do(sequence_trailing(
-          pratt.sub_expression(config, 0),
-          token(token.Comma),
+        use params <- do(delimited(
+          token(token.LParen),
+          sequence_trailing(pratt.sub_expression(config, 0), token(token.Comma)),
+          token(token.RParen),
         ))
-        use _ <- do(token(token.RParen))
         use _ <- do(token(token.Arrow))
         use return_type <- do(pratt.sub_expression(config, 1))
 
@@ -204,48 +236,6 @@ fn parse_type() {
     or_error: "Expected type",
   )
   |> chomp.backtrackable
-}
-
-fn parse_generic_args() -> Parser(List(types.GenericArg)) {
-  use _ <- do(token(token.Lt))
-  use args <- do(sequence_trailing(
-    {
-      use name <- do(
-        optional({
-          use it <- do(parse_identifier())
-          use _ <- do(token(token.Eq))
-          return(it)
-        }),
-      )
-      use value <- do(parse_type())
-
-      return(types.GenericArg(value:, name:))
-    },
-    token(token.Comma),
-  ))
-  use _ <- do(token(token.Gt))
-
-  return(args)
-}
-
-fn parse_visibility() -> Parser(declaration.Visibility) {
-  use t <- do(chomp.any())
-
-  case t {
-    token.Public -> return(declaration.Public)
-    token.Internal -> return(declaration.Internal)
-    token.Private -> return(declaration.Private)
-    _ -> fail("Expected `public`, `internal`, or `private`")
-  }
-}
-
-fn parse_identifier() -> Parser(String) {
-  use t <- do(chomp.any())
-
-  case t {
-    token.Identifier(name) -> return(name)
-    _ -> fail("Expected an identifier")
-  }
 }
 
 fn parse_int() -> Parser(Int) {
@@ -316,11 +306,88 @@ fn parse_char() -> Parser(UtfCodepoint) {
           return(val)
         }
         _ ->
-          panic as "Invalid escape code in char literal, should be caught in lexing"
+          panic as "Invalid escape code in char literal, should be prevented in lexing"
       }
     token.Char(value) -> return(value)
     _ -> fail("Expected a char literal")
   }
+}
+
+fn parse_string(config) -> Parser(List(expr.StringPart)) {
+  chomp.many(
+    chomp.one_of([
+      {
+        use t <- do(chomp.any())
+
+        case t {
+          token.StringUnicode(codepoint) ->
+            case string.utf_codepoint(codepoint) {
+              Ok(val) -> return(expr.Unicode(val))
+              Error(_) ->
+                fail(
+                  "Invalid unicode codepoint: U+" <> int.to_base16(codepoint),
+                )
+            }
+          token.StringEscape(escape) -> return(expr.EscapeSequence(escape))
+          token.StringChar(char) -> return(expr.Grapheme(char))
+          token.StringInterpolationStart -> {
+            use value <- do(pratt.sub_expression(config, 0))
+            use _ <- do(token(token.StringInterpolationEnd))
+            return(expr.InterpolatedExpr(value))
+          }
+          _ ->
+            panic as "Unexpected token in string literal, should be prevented in lexing"
+        }
+      },
+    ]),
+  )
+  |> delimited(token(token.StringStart), _, token(token.StringEnd))
+}
+
+fn parse_generic_args() -> Parser(List(types.GenericArg)) {
+  delimited(
+    token(token.Lt),
+    sequence_trailing(
+      {
+        use name <- do(
+          optional({
+            use it <- do(parse_identifier())
+            use _ <- do(token(token.Eq))
+            return(it)
+          }),
+        )
+        use value <- do(parse_type())
+
+        return(types.GenericArg(value:, name:))
+      },
+      token(token.Comma),
+    ),
+    token(token.Gt),
+  )
+}
+
+fn parse_visibility() -> Parser(declaration.Visibility) {
+  chomp.one_of([
+    token(token.Public) |> chomp.replace(declaration.Public),
+    token(token.Internal) |> chomp.replace(declaration.Internal),
+    token(token.Private) |> chomp.replace(declaration.Private),
+  ])
+}
+
+fn parse_identifier() -> Parser(String) {
+  use t <- do(chomp.any())
+
+  case t {
+    token.Identifier(name) -> return(name)
+    _ -> fail("Expected an identifier")
+  }
+}
+
+fn delimited(start: Parser(_), parser: Parser(a), end: Parser(_)) -> Parser(a) {
+  use _ <- do(start)
+  use it <- do(parser)
+  use _ <- do(end)
+  return(it)
 }
 
 fn sequence_trailing(

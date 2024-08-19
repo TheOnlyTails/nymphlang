@@ -7,7 +7,9 @@ import nymph/parser
 import pprint
 
 pub fn main() {
-  let tokens = case lexer.run("import std/math with (abs as absolute_value)") {
+  let source = "let x = foo()"
+
+  let tokens = case lexer.run(source) {
     Ok(tokens) -> tokens |> pprint.debug
     Error(chomp_lexer.NoMatchFound(row:, col:, lexeme:)) -> {
       io.println_error(

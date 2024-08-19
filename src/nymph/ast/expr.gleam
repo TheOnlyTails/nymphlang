@@ -51,6 +51,7 @@ pub type Expr {
 pub type StringPart {
   Grapheme(UtfCodepoint)
   EscapeSequence(EscapeSequence)
+  Unicode(UtfCodepoint)
   InterpolatedExpr(Expr)
 }
 
