@@ -98,6 +98,7 @@ fn parse_expr() {
     one_of: [
       // function call
       fn(config) {
+        use <- chomp.lazy
         let call_arg =
           chomp.lazy(fn() {
             use name <- do(
