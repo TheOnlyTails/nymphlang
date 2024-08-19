@@ -26,11 +26,11 @@ pub type BinaryOperator {
   /// **
   Power
   /// &
-  BinAnd
+  BitAnd
   /// |
-  BinOr
+  BitOr
   /// ^
-  BinXor
+  BitXor
   /// <<
   LeftShift
   /// >>
@@ -78,9 +78,9 @@ pub type AssignOperator {
   PowerAssign
   LeftShiftAssign
   RightShiftAssign
-  BinAndAssign
-  BinXorAssign
-  BinOrAssign
+  BitAndAssign
+  BitXorAssign
+  BitOrAssign
   BoolAndAssign
   BoolOrAssign
 }

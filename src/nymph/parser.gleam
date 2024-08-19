@@ -124,6 +124,25 @@ fn parse_expr() {
 
         return(expr.Call(func:, generics:, args:))
       },
+      // member access
+      fn(config) {
+        use parent <- do(pratt.sub_expression(config, 14))
+        use _ <- do(token(token.Dot))
+        use member <- do(parse_identifier())
+
+        return(expr.MemberAccess(parent:, member:))
+      },
+      // index access
+      fn(config) {
+        use parent <- do(pratt.sub_expression(config, 13))
+        use index <- do(delimited(
+          token(token.LBracket),
+          pratt.sub_expression(config, 0),
+          token(token.RBracket),
+        ))
+
+        return(expr.IndexAccess(parent:, index:))
+      },
       // negate number
       pratt.prefix(12, token(token.Minus), expr.PrefixOp(operators.Negate, _)),
       // boolean NOT
@@ -131,13 +150,28 @@ fn parse_expr() {
         operators.Not,
         _,
       )),
+      // type operations
+      fn(config) {
+        use lhs <- do(pratt.sub_expression(config, 11))
+        use op <- do(
+          chomp.one_of([
+            token(token.As) |> chomp.replace(operators.As),
+            token(token.Is) |> chomp.replace(operators.Is),
+            token(token.NotIs) |> chomp.replace(operators.NotIs),
+          ]),
+        )
+        use rhs <- do(parse_type())
+
+        return(expr.TypeOp(lhs:, op:, rhs:))
+      },
       fn(_) { parse_int() |> chomp.map(expr.Int) },
       fn(_) { parse_float() |> chomp.map(expr.Float) },
       fn(_) { parse_char() |> chomp.map(expr.Char) },
       fn(_) { parse_boolean() |> chomp.map(expr.Boolean) },
-      fn(config) { parse_string(config) |> chomp.map(expr.String) },
+      // fn(config) { parse_string(config) |> chomp.map(expr.String) },
     ],
     and_then: [
+      // increment/decrement
       pratt.postfix(12, token(token.PlusPlus), expr.PostfixOp(
         operators.Increment,
         _,
@@ -146,24 +180,49 @@ fn parse_expr() {
         operators.Decrement,
         _,
       )),
-      pratt.infix_right(11, token(token.StarStar), fn(left, right) {
-        expr.BinaryOp(left, operators.Power, right)
-      }),
-      pratt.infix_right(10, token(token.Star), fn(left, right) {
-        expr.BinaryOp(left, operators.Times, right)
-      }),
-      pratt.infix_right(10, token(token.Slash), fn(left, right) {
-        expr.BinaryOp(left, operators.Divide, right)
-      }),
-      pratt.infix_right(10, token(token.Percent), fn(left, right) {
-        expr.BinaryOp(left, operators.Modulus, right)
-      }),
-      pratt.infix_right(9, token(token.Plus), fn(left, right) {
-        expr.BinaryOp(left, operators.Plus, right)
-      }),
-      pratt.infix_right(9, token(token.Minus), fn(left, right) {
-        expr.BinaryOp(left, operators.Minus, right)
-      }),
+      // exponentiation
+      infix_op(10, token.StarStar, operators.Power, expr.BinaryOp, False),
+      // multiplication/division/modulus
+      infix_op(10, token.Star, operators.Times, expr.BinaryOp, True),
+      infix_op(10, token.Slash, operators.Divide, expr.BinaryOp, True),
+      infix_op(10, token.Percent, operators.Modulus, expr.BinaryOp, True),
+      // addition/subtraction
+      infix_op(9, token.Plus, operators.Plus, expr.BinaryOp, True),
+      infix_op(9, token.Minus, operators.Minus, expr.BinaryOp, True),
+      // bit shift ops
+      infix_op(8, token.LtLt, operators.LeftShift, expr.BinaryOp, True),
+      infix_op(8, token.GtGt, operators.RightShift, expr.BinaryOp, True),
+      // bitwise ops
+      infix_op(7, token.And, operators.BitAnd, expr.BinaryOp, True),
+      infix_op(6, token.Caret, operators.BitXor, expr.BinaryOp, True),
+      infix_op(5, token.Pipe, operators.BitOr, expr.BinaryOp, True),
+      // comparison ops
+      infix_op(4, token.EqEq, operators.Equals, expr.BinaryOp, True),
+      infix_op(4, token.NotEq, operators.NotEquals, expr.BinaryOp, True),
+      infix_op(4, token.Lt, operators.LessThan, expr.BinaryOp, True),
+      infix_op(4, token.LtEq, operators.LessThanEquals, expr.BinaryOp, True),
+      infix_op(4, token.Gt, operators.GreaterThan, expr.BinaryOp, True),
+      infix_op(4, token.GtEq, operators.GreaterThanEquals, expr.BinaryOp, True),
+      infix_op(4, token.In, operators.In, expr.BinaryOp, True),
+      infix_op(4, token.NotIn, operators.NotIn, expr.BinaryOp, True),
+      // boolean ops
+      infix_op(3, token.AndAnd, operators.BoolAnd, expr.BinaryOp, True),
+      infix_op(2, token.PipePipe, operators.BoolOr, expr.BinaryOp, True),
+      // assignment ops
+      infix_op(1, token.Eq, operators.Assign, expr.AssignOp, True),
+      infix_op(1, token.PlusEq, operators.PlusAssign, expr.AssignOp, True),
+      infix_op(1, token.MinusEq, operators.MinusAssign, expr.AssignOp, True),
+      infix_op(1, token.StarEq, operators.TimesAssign, expr.AssignOp, True),
+      infix_op(1, token.SlashEq, operators.DivideAssign, expr.AssignOp, True),
+      infix_op(1, token.PercentEq, operators.ModulusAssign, expr.AssignOp, True),
+      infix_op(1, token.StarStarEq, operators.PowerAssign, expr.AssignOp, True),
+      infix_op(1, token.AndAndEq, operators.BoolAndAssign, expr.AssignOp, True),
+      infix_op(1, token.PipePipeEq, operators.BoolOrAssign, expr.AssignOp, True),
+      infix_op(1, token.AndEq, operators.BitAndAssign, expr.AssignOp, True),
+      infix_op(1, token.PipeEq, operators.BitOrAssign, expr.AssignOp, True),
+      infix_op(1, token.CaretEq, operators.BitXorAssign, expr.AssignOp, True),
+      infix_op(1, token.LtLtEq, operators.LeftShiftAssign, expr.AssignOp, True),
+      infix_op(1, token.GtGtEq, operators.RightShiftAssign, expr.AssignOp, True),
     ],
     or_error: "Expected expression",
   )
@@ -380,6 +439,25 @@ fn parse_identifier() -> Parser(String) {
   case t {
     token.Identifier(name) -> return(name)
     _ -> fail("Expected an identifier")
+  }
+}
+
+fn infix_op(
+  precedence: Int,
+  token: token.NymphToken,
+  op: b,
+  constructor: fn(a, b, a) -> a,
+  left_assoc: Bool,
+) {
+  case left_assoc {
+    True ->
+      pratt.infix_left(precedence, chomp.token(token), fn(lhs, rhs) {
+        constructor(lhs, op, rhs)
+      })
+    False ->
+      pratt.infix_right(precedence, chomp.token(token), fn(lhs, rhs) {
+        constructor(lhs, op, rhs)
+      })
   }
 }
 
