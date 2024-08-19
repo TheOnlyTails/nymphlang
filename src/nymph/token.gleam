@@ -129,6 +129,8 @@ pub type NymphToken {
   Colon
   /// _
   Underscore
+  /// |>
+  Triangle
   /// ++
   PlusPlus
   /// --

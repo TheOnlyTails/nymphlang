@@ -114,7 +114,7 @@ fn parse_expr() {
 
             return(expr.CallArg(name:, spread:, value:))
           })
-        use func <- do(pratt.sub_expression(config, 15))
+        use func <- do(pratt.sub_expression(config, 16))
         use generics <- do(chomp.or(parse_generic_args(), []))
         use args <- do(delimited(
           token(token.LParen),
@@ -126,7 +126,7 @@ fn parse_expr() {
       },
       // member access
       fn(config) {
-        use parent <- do(pratt.sub_expression(config, 14))
+        use parent <- do(pratt.sub_expression(config, 15))
         use _ <- do(token(token.Dot))
         use member <- do(parse_identifier())
 
@@ -134,7 +134,7 @@ fn parse_expr() {
       },
       // index access
       fn(config) {
-        use parent <- do(pratt.sub_expression(config, 13))
+        use parent <- do(pratt.sub_expression(config, 14))
         use index <- do(delimited(
           token(token.LBracket),
           pratt.sub_expression(config, 0),
@@ -152,7 +152,7 @@ fn parse_expr() {
       )),
       // type operations
       fn(config) {
-        use lhs <- do(pratt.sub_expression(config, 11))
+        use lhs <- do(pratt.sub_expression(config, 12))
         use op <- do(
           chomp.one_of([
             token(token.As) |> chomp.replace(operators.As),
@@ -168,46 +168,48 @@ fn parse_expr() {
       fn(_) { parse_float() |> chomp.map(expr.Float) },
       fn(_) { parse_char() |> chomp.map(expr.Char) },
       fn(_) { parse_boolean() |> chomp.map(expr.Boolean) },
-      // fn(config) { parse_string(config) |> chomp.map(expr.String) },
+      fn(config) { parse_string(config) |> chomp.map(expr.String) },
     ],
     and_then: [
       // increment/decrement
-      pratt.postfix(12, token(token.PlusPlus), expr.PostfixOp(
+      pratt.postfix(14, token(token.PlusPlus), expr.PostfixOp(
         operators.Increment,
         _,
       )),
-      pratt.postfix(12, token(token.MinusMinus), expr.PostfixOp(
+      pratt.postfix(14, token(token.MinusMinus), expr.PostfixOp(
         operators.Decrement,
         _,
       )),
       // exponentiation
-      infix_op(10, token.StarStar, operators.Power, expr.BinaryOp, False),
+      infix_op(12, token.StarStar, operators.Power, expr.BinaryOp, False),
       // multiplication/division/modulus
-      infix_op(10, token.Star, operators.Times, expr.BinaryOp, True),
-      infix_op(10, token.Slash, operators.Divide, expr.BinaryOp, True),
-      infix_op(10, token.Percent, operators.Modulus, expr.BinaryOp, True),
+      infix_op(11, token.Star, operators.Times, expr.BinaryOp, True),
+      infix_op(11, token.Slash, operators.Divide, expr.BinaryOp, True),
+      infix_op(11, token.Percent, operators.Modulus, expr.BinaryOp, True),
       // addition/subtraction
-      infix_op(9, token.Plus, operators.Plus, expr.BinaryOp, True),
-      infix_op(9, token.Minus, operators.Minus, expr.BinaryOp, True),
+      infix_op(10, token.Plus, operators.Plus, expr.BinaryOp, True),
+      infix_op(10, token.Minus, operators.Minus, expr.BinaryOp, True),
       // bit shift ops
-      infix_op(8, token.LtLt, operators.LeftShift, expr.BinaryOp, True),
-      infix_op(8, token.GtGt, operators.RightShift, expr.BinaryOp, True),
+      infix_op(9, token.LtLt, operators.LeftShift, expr.BinaryOp, True),
+      infix_op(9, token.GtGt, operators.RightShift, expr.BinaryOp, True),
       // bitwise ops
-      infix_op(7, token.And, operators.BitAnd, expr.BinaryOp, True),
-      infix_op(6, token.Caret, operators.BitXor, expr.BinaryOp, True),
-      infix_op(5, token.Pipe, operators.BitOr, expr.BinaryOp, True),
+      infix_op(8, token.And, operators.BitAnd, expr.BinaryOp, True),
+      infix_op(7, token.Caret, operators.BitXor, expr.BinaryOp, True),
+      infix_op(6, token.Pipe, operators.BitOr, expr.BinaryOp, True),
       // comparison ops
-      infix_op(4, token.EqEq, operators.Equals, expr.BinaryOp, True),
-      infix_op(4, token.NotEq, operators.NotEquals, expr.BinaryOp, True),
-      infix_op(4, token.Lt, operators.LessThan, expr.BinaryOp, True),
-      infix_op(4, token.LtEq, operators.LessThanEquals, expr.BinaryOp, True),
-      infix_op(4, token.Gt, operators.GreaterThan, expr.BinaryOp, True),
-      infix_op(4, token.GtEq, operators.GreaterThanEquals, expr.BinaryOp, True),
-      infix_op(4, token.In, operators.In, expr.BinaryOp, True),
-      infix_op(4, token.NotIn, operators.NotIn, expr.BinaryOp, True),
+      infix_op(5, token.EqEq, operators.Equals, expr.BinaryOp, True),
+      infix_op(5, token.NotEq, operators.NotEquals, expr.BinaryOp, True),
+      infix_op(5, token.Lt, operators.LessThan, expr.BinaryOp, True),
+      infix_op(5, token.LtEq, operators.LessThanEquals, expr.BinaryOp, True),
+      infix_op(5, token.Gt, operators.GreaterThan, expr.BinaryOp, True),
+      infix_op(5, token.GtEq, operators.GreaterThanEquals, expr.BinaryOp, True),
+      infix_op(5, token.In, operators.In, expr.BinaryOp, True),
+      infix_op(5, token.NotIn, operators.NotIn, expr.BinaryOp, True),
       // boolean ops
-      infix_op(3, token.AndAnd, operators.BoolAnd, expr.BinaryOp, True),
-      infix_op(2, token.PipePipe, operators.BoolOr, expr.BinaryOp, True),
+      infix_op(4, token.AndAnd, operators.BoolAnd, expr.BinaryOp, True),
+      infix_op(3, token.PipePipe, operators.BoolOr, expr.BinaryOp, True),
+      // pipeline op
+      infix_op(2, token.Triangle, operators.Pipe, expr.BinaryOp, True),
       // assignment ops
       infix_op(1, token.Eq, operators.Assign, expr.AssignOp, True),
       infix_op(1, token.PlusEq, operators.PlusAssign, expr.AssignOp, True),
