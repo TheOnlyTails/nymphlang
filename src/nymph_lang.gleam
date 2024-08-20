@@ -7,7 +7,7 @@ import nymph/parser
 import pprint
 
 pub fn main() {
-  let source = "let x = foo()"
+  let source = "let x = 1 + foo"
 
   let tokens = case lexer.run(source) {
     Ok(tokens) -> tokens |> pprint.debug

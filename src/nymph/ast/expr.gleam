@@ -97,7 +97,7 @@ pub type Pattern {
   IdentifierPattern(Ident)
   ListPattern(List(Pattern))
   TuplePattern(List(Pattern))
-  MapPattern(Dict(Pattern, Option(Pattern)))
+  MapPattern(List(MapPatternItem))
   TypePattern(Type)
   RangePattern(RangePatternKind)
   StructPattern(name: Ident, fields: List(StructPatternField))
@@ -115,4 +115,9 @@ pub type RangePatternKind {
 pub type StructPatternField {
   NamedField(name: Ident, pattern: Option(Pattern))
   Rest
+}
+
+pub type MapPatternItem {
+  Entry(key: Pattern, value: Pattern)
+  RestEntry
 }

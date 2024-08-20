@@ -1,7 +1,7 @@
 pub type PrefixOperator {
   /// !
   Not
-  /// -
+  /// \-
   Negate
 }
 
@@ -15,7 +15,7 @@ pub type PostfixOperator {
 pub type BinaryOperator {
   /// +
   Plus
-  /// -
+  /// \-
   Minus
   /// *
   Times
