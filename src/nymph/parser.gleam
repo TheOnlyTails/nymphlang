@@ -104,11 +104,11 @@ fn parse_import() {
   return(declaration.Import(path, idents))
 }
 
-fn parse_expr() {
+pub fn parse_expr() {
   pratt.expression(
     one_of: [
-      fn(_) { parse_int() |> chomp.map(expr.Int) },
       fn(_) { parse_identifier() |> chomp.map(expr.Identifier) },
+      fn(_) { parse_int() |> chomp.map(expr.Int) },
       fn(_) { parse_float() |> chomp.map(expr.Float) },
       fn(_) { parse_char() |> chomp.map(expr.Char) },
       fn(_) { parse_boolean() |> chomp.map(expr.Boolean) },
@@ -201,10 +201,9 @@ fn parse_expr() {
     ],
     or_error: "Expected expression",
   )
-  |> chomp.backtrackable
 }
 
-fn parse_type() {
+pub fn parse_type() {
   pratt.expression(
     one_of: [
       fn(_) { token(token.IntType) |> chomp.replace(types.IntType) },
