@@ -10,7 +10,10 @@ import pprint
 pub fn main() {
   let source =
     "
-    () -> 1
+    func factorial(n: int) -> match (n) {
+      ..=1 -> 1,
+      n -> n * factorial(n - 1)
+    }
     "
     |> dedent.dedent
 
@@ -29,5 +32,5 @@ pub fn main() {
     }
   }
 
-  run(tokens, parser.parse_expr()) |> pprint.debug
+  run(tokens, parser.parser()) |> pprint.debug
 }

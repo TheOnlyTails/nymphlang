@@ -109,8 +109,10 @@ pub type Pattern {
 }
 
 pub type RangePatternKind {
-  ExclusivePattern(min: Pattern, max: Option(Pattern))
-  InclusivePattern(min: Option(Pattern), max: Pattern)
+  ExclusivePatternMin(min: Pattern)
+  ExclusivePatternBoth(min: Pattern, max: Pattern)
+  InclusivePatternMax(max: Pattern)
+  InclusivePatternBoth(min: Pattern, max: Pattern)
 }
 
 pub type StructPatternField {

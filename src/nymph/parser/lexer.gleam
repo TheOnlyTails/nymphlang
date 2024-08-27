@@ -153,7 +153,7 @@ pub fn lexer() -> lexer.Lexer(NymphToken, LexMode) {
         lexer.token("^=", token.CaretEq),
         lexer.token("<<=", token.LtLtEq),
         lexer.token(">>=", token.GtGtEq),
-        lexer.keyword("..", "[^=]", token.DotDot),
+        lexer.keyword("..", "[^=\\.]", token.DotDot),
         lexer.token("..=", token.DotDotEq),
         lexer.keyword("continue", "[^$_a-zA-Z]", token.Continue),
         lexer.keyword("break", "[^$_a-zA-Z]", token.Break),
