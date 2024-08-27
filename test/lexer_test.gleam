@@ -1,8 +1,8 @@
 import chomp/lexer.{Token} as chomp_lexer
 import chomp/span.{Span}
 import gleeunit/should
-import nymph/lexer
-import nymph/token
+import nymph/parser/lexer
+import nymph/parser/token
 
 pub fn decimal_int_test() {
   // numbers must be at least one digit

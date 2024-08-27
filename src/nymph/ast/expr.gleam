@@ -6,7 +6,7 @@ import nymph/ast/utils.{type Ident}
 
 pub type Statement {
   Expr(Expr)
-  Let(name: Ident, type_: Type, mutable: Bool, value: Expr)
+  Let(name: Ident, type_: Option(Type), mutable: Bool, value: Expr)
 }
 
 pub type Expr {
@@ -27,7 +27,7 @@ pub type Expr {
   Closure(
     params: List(FuncParam),
     generics: List(GenericParam),
-    return: Option(Type),
+    return_type: Option(Type),
     body: Expr,
   )
   PrefixOp(op: operators.PrefixOperator, value: Expr)
@@ -35,8 +35,8 @@ pub type Expr {
   BinaryOp(lhs: Expr, op: operators.BinaryOperator, rhs: Expr)
   TypeOp(lhs: Expr, op: operators.TypeOperator, rhs: Type)
   AssignOp(lhs: Expr, op: operators.AssignOperator, rhs: Expr)
-  Return(value: Expr, label: Option(Ident))
-  Break(value: Expr, label: Option(Ident))
+  Return(value: Option(Expr), label: Option(Ident))
+  Break(value: Option(Expr), label: Option(Ident))
   Continue(label: Option(Ident))
   For(variable: Pattern, iterable: Expr, body: Expr, label: Option(Ident))
   While(condition: Expr, body: Expr, label: Option(Ident))
@@ -76,8 +76,9 @@ pub type FuncParam {
 }
 
 pub type RangeKind {
-  Exclusive(min: Option(Expr), max: Option(Expr))
-  Inclusive(min: Option(Expr), max: Expr)
+  Full
+  Exclusive(min: Expr, max: Expr)
+  Inclusive(min: Expr, max: Expr)
 }
 
 pub type CallArg {

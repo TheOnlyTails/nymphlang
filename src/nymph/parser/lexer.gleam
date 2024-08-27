@@ -8,7 +8,7 @@ import gleam/result
 import gleam/set
 import gleam/string
 import nymph/ast/expr
-import nymph/token.{type NymphToken}
+import nymph/parser/token.{type NymphToken}
 
 pub type LexMode {
   Normal(nesting: Int)
@@ -18,10 +18,10 @@ pub type LexMode {
 fn reserved() -> set.Set(String) {
   [
     "true", "false", "public", "internal", "private", "import", "with", "let",
-    "mut", "type", "struct", "enum", "impl", "interface", "namespace", "for",
-    "while", "match", "if", "else", "int", "float", "char", "string", "boolean",
-    "void", "never", "as", "is", "in", "continue", "break", "return", "this",
-    "_",
+    "mut", "func", "type", "struct", "enum", "impl", "interface", "namespace",
+    "for", "while", "match", "if", "else", "int", "float", "char", "string",
+    "boolean", "void", "never", "as", "is", "in", "continue", "break", "return",
+    "this", "_",
   ]
   |> set.from_list
 }
@@ -116,7 +116,7 @@ pub fn lexer() -> lexer.Lexer(NymphToken, LexMode) {
         lexer.token("--", token.MinusMinus),
         lexer.keyword("!", "[^i=]", token.ExclamationMark),
         lexer.keyword("+", "[^+=]", token.Plus),
-        lexer.keyword("-", "[^-=]", token.Minus),
+        lexer.keyword("-", "[^->=]", token.Minus),
         lexer.keyword("*", "[^*=]", token.Star),
         lexer.keyword("/", "[^/=]", token.Slash),
         lexer.keyword("%", "[^=]", token.Percent),
@@ -153,14 +153,14 @@ pub fn lexer() -> lexer.Lexer(NymphToken, LexMode) {
         lexer.token("^=", token.CaretEq),
         lexer.token("<<=", token.LtLtEq),
         lexer.token(">>=", token.GtGtEq),
-        lexer.token("..", token.DotDot),
+        lexer.keyword("..", "[^=]", token.DotDot),
         lexer.token("..=", token.DotDotEq),
         lexer.keyword("continue", "[^$_a-zA-Z]", token.Continue),
         lexer.keyword("break", "[^$_a-zA-Z]", token.Break),
         lexer.keyword("return", "[^$_a-zA-Z]", token.Return),
         lexer.keyword("this", "[^$_a-zA-Z]", token.This),
         lexer.comment("//", token.Comment),
-        lexer.spaces_(token.Whitespace),
+        whitespace_lexer(),
       ]
       String(nesting) -> [
         lexer.token("\"", token.StringEnd)
@@ -377,6 +377,17 @@ fn string_regular() {
       |> list.first
       |> result.map(fn(val) { lexer.Keep(token.StringChar(val), mode) })
       |> result.unwrap(or: lexer.NoMatch)
+  }
+}
+
+fn whitespace_lexer() {
+  let assert Ok(whitespace) = regex.from_string("^\\s+$")
+
+  use mode, lexeme, _ <- lexer.custom
+
+  case regex.check(whitespace, lexeme) {
+    True -> lexer.Keep(token.Whitespace(lexeme), mode)
+    False -> lexer.NoMatch
   }
 }
 

@@ -3,13 +3,15 @@ import chomp/pratt
 import gleam/dict
 import gleam/float
 import gleam/int
-import gleam/option
+import gleam/list
+import gleam/option.{None, Some}
 import gleam/string
 import nymph/ast/declaration
 import nymph/ast/expr
 import nymph/ast/operators
 import nymph/ast/types
-import nymph/token
+import nymph/parser/precedence
+import nymph/parser/token
 
 type Parser(a) =
   chomp.Parser(a, String, token.NymphToken, String)
@@ -19,47 +21,39 @@ pub fn parser() -> Parser(declaration.Module) {
 }
 
 fn parse_module() {
-  use members <- do(chomp.many(parse_declaration()))
-  use _ <- do(chomp.end())
-  // parses until the end of the input
-  return(declaration.Module(members))
+  chomp.until_end(parse_declaration())
+  |> chomp.map(declaration.Module)
 }
 
 fn parse_declaration() {
-  chomp.backtrackable(
-    chomp.one_of([
-      parse_import(),
-      parse_let(),
-      // parse_func(),
+  chomp.one_of([
+    parse_import(),
+    parse_let(),
+    parse_func(),
     // parse_type_alias(),
-    // parse_struct(),
-    // parse_enum(),
-    // parse_namespace(),
-    // parse_interface(),
-    // parse_impl_ext(),
-    // parse_impl_for(),
-    ]),
-  )
+  // parse_struct(),
+  // parse_enum(),
+  // parse_namespace(),
+  // parse_interface(),
+  // parse_impl_ext(),
+  // parse_impl_for(),
+  ])
 }
 
 fn parse_let() {
   use visibility <- do_in("let declaration", optional(parse_visibility()))
-  use _ <- do_in("let declaration", token(token.Let))
-  use mutable <- do_in(
-    "let declaration",
-    optional(token(token.Mut)) |> chomp.map(option.is_some),
-  )
-  use name <- do_in("let declaration", parse_identifier())
-  use type_ <- do_in(
-    "let declaration",
+  use _ <- do(token(token.Let))
+  use mutable <- do(optional(token(token.Mut)) |> chomp.map(option.is_some))
+  use name <- do(parse_identifier())
+  use type_ <- do(
     optional({
-      use _ <- do_in("let declaration", token(token.Colon))
-      use type_ <- do_in("let declaration", parse_type())
+      use _ <- do(token(token.Colon))
+      use type_ <- do(parse_type())
       return(type_)
     }),
   )
-  use _ <- do_in("let declaration", token(token.Eq))
-  use value <- do_in("let declaration", parse_expr())
+  use _ <- do(token(token.Eq))
+  use value <- do(parse_expr())
 
   return(declaration.Let(
     declaration.LetDeclaration(visibility:, mutable:, name:, type_:),
@@ -67,15 +61,65 @@ fn parse_let() {
   ))
 }
 
+pub fn parse_func() {
+  use visibility <- do_in("function declaration", optional(parse_visibility()))
+  use _ <- do(try_token(token.Func))
+  use name <- do(parse_identifier())
+  use generics <- do(chomp.or(parse_generic_params(), []))
+  use params <- do(delimited(
+    try_token(token.LParen),
+    sequence_trailing(parse_func_param(), token(token.Comma)),
+    try_token(token.RParen),
+  ))
+  use return_type <- do(
+    optional({
+      use _ <- do(try_token(token.Colon))
+      use it <- do(parse_type())
+      return(it)
+    }),
+  )
+  use _ <- do(try_token(token.Arrow))
+  use body <- do(parse_expr())
+
+  return(declaration.Func(
+    meta: declaration.FuncDeclaration(
+      visibility:,
+      name:,
+      generics:,
+      params:,
+      return_type:,
+    ),
+    body:,
+  ))
+}
+
+fn parse_func_param() -> Parser(expr.FuncParam) {
+  use spread <- do_in(
+    "function parameter",
+    optional(try_token(token.Spread)) |> chomp.map(option.is_some),
+  )
+  use name <- do(chomp.backtrackable(parse_pattern()))
+  use _ <- do(try_token(token.Colon))
+  use type_ <- do(parse_type())
+  use default <- do(
+    optional({
+      use _ <- do(try_token(token.Eq))
+      use it <- do(parse_expr())
+      return(it)
+    }),
+  )
+
+  return(expr.FuncParam(spread:, name:, type_:, default:))
+}
+
 fn parse_import() {
   let import_ident =
     chomp.lazy(fn() {
       use name <- do_in("import identifier", parse_identifier())
-      use alias <- do_in(
-        "import identifier",
+      use alias <- do(
         chomp.optional({
-          use _ <- do_in("import identifier", token(token.As))
-          use val <- do_in("import identifier", parse_identifier())
+          use _ <- do(token(token.As))
+          use val <- do(parse_identifier())
           return(val)
         }),
       )
@@ -84,22 +128,18 @@ fn parse_import() {
     })
   let with_clause =
     chomp.lazy(fn() {
-      use _ <- do_in("import statement", token(token.With))
-      use _ <- do_in("import statement", token(token.LParen))
-      use idents <- do_in(
-        "import statement",
+      use _ <- do(token(token.With))
+      use idents <- do(delimited(
+        token(token.LParen),
         sequence_trailing(import_ident, token(token.Comma)),
-      )
-      use _ <- do_in("import statement", token(token.RParen))
+        token(token.RParen),
+      ))
 
-      dict.from_list(idents) |> return
+      return(dict.from_list(idents))
     })
   use _ <- do_in("import statement", token(token.Import))
-  use path <- do_in(
-    "import statement",
-    sequence_trailing(parse_identifier(), token(token.Slash)),
-  )
-  use idents <- do_in("import statement", chomp.optional(with_clause))
+  use path <- do(sequence_trailing(parse_identifier(), token(token.Slash)))
+  use idents <- do(chomp.optional(with_clause))
 
   return(declaration.Import(path, idents))
 }
@@ -107,97 +147,287 @@ fn parse_import() {
 pub fn parse_expr() {
   pratt.expression(
     one_of: [
+      fn(_) { parse_block_expr() },
       fn(_) { parse_identifier() |> chomp.map(expr.Identifier) },
       fn(_) { parse_int() |> chomp.map(expr.Int) },
       fn(_) { parse_float() |> chomp.map(expr.Float) },
       fn(_) { parse_char() |> chomp.map(expr.Char) },
       fn(_) { parse_boolean() |> chomp.map(expr.Boolean) },
       fn(config) { parse_string(config) |> chomp.map(expr.String) },
-      parse_function_call,
-      parse_ex_range,
-      parse_in_range,
-      fn(_) { token(token.This) |> chomp.replace(expr.This) },
-      fn(_) { token(token.Underscore) |> chomp.replace(expr.Placeholder) },
+      fn(_) { try_token(token.This) |> chomp.replace(expr.This) },
+      fn(_) { try_token(token.Underscore) |> chomp.replace(expr.Placeholder) },
+      fn(_) { parse_ex_range_full() },
+      fn(_) { parse_continue() },
+      parse_closure,
       parse_for_loop,
       parse_while_loop,
       parse_if,
-      parse_member_access,
-      parse_index_access,
       parse_return,
       parse_break,
-      parse_continue,
       // negate number
-      pratt.prefix(12, token(token.Minus), expr.PrefixOp(operators.Negate, _)),
-      // boolean NOT
-      pratt.prefix(12, token(token.ExclamationMark), expr.PrefixOp(
-        operators.Not,
+      pratt.prefix(precedence.unary_op, token(token.Minus), expr.PrefixOp(
+        operators.Negate,
         _,
       )),
-      parse_type_op,
+      // boolean NOT
+      pratt.prefix(
+        precedence.unary_op,
+        token(token.ExclamationMark),
+        expr.PrefixOp(operators.Not, _),
+      ),
       fn(config) {
         delimited(
-          "grouped expression",
-          token(token.LParen),
-          pratt.sub_expression(config, 0) |> chomp.map(expr.Grouped),
-          token(token.RParen),
+          try_token(token.LParen),
+          pratt.sub_expression(config, 0),
+          try_token(token.RParen),
         )
+        |> chomp.in("grouped expression")
+        |> chomp.map(expr.Grouped)
       },
     ],
     and_then: [
-      // increment/decrement
-      pratt.postfix(14, token(token.PlusPlus), expr.PostfixOp(
+      // ranges
+      parse_ex_range(),
+      parse_in_range(),
+      // foo(a, b), a.b, a[b]
+      parse_function_call(),
+      parse_member_access(),
+      parse_index_access(),
+      // unary operators
+      pratt.postfix(precedence.unary_op, token(token.PlusPlus), expr.PostfixOp(
         operators.Increment,
         _,
       )),
-      pratt.postfix(14, token(token.MinusMinus), expr.PostfixOp(
+      pratt.postfix(precedence.unary_op, token(token.MinusMinus), expr.PostfixOp(
         operators.Decrement,
         _,
       )),
+      parse_type_op(),
       // exponentiation
-      infix_op(12, token.StarStar, operators.Power, expr.BinaryOp, False),
+      infix_op(
+        pratt.Right(precedence.exponent),
+        token.StarStar,
+        operators.Power,
+        expr.BinaryOp,
+      ),
       // multiplication/division/modulus
-      infix_op(11, token.Star, operators.Times, expr.BinaryOp, True),
-      infix_op(11, token.Slash, operators.Divide, expr.BinaryOp, True),
-      infix_op(11, token.Percent, operators.Modulus, expr.BinaryOp, True),
+      infix_op(
+        pratt.Left(precedence.times_divide),
+        token.Star,
+        operators.Times,
+        expr.BinaryOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.times_divide),
+        token.Slash,
+        operators.Divide,
+        expr.BinaryOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.times_divide),
+        token.Percent,
+        operators.Modulus,
+        expr.BinaryOp,
+      ),
       // addition/subtraction
-      infix_op(10, token.Plus, operators.Plus, expr.BinaryOp, True),
-      infix_op(10, token.Minus, operators.Minus, expr.BinaryOp, True),
+      infix_op(
+        pratt.Left(precedence.plus_minus),
+        token.Plus,
+        operators.Plus,
+        expr.BinaryOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.plus_minus),
+        token.Minus,
+        operators.Minus,
+        expr.BinaryOp,
+      ),
       // bit shift ops
-      infix_op(9, token.LtLt, operators.LeftShift, expr.BinaryOp, True),
-      infix_op(9, token.GtGt, operators.RightShift, expr.BinaryOp, True),
+      infix_op(
+        pratt.Left(precedence.ordering),
+        token.LtLt,
+        operators.LeftShift,
+        expr.BinaryOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.ordering),
+        token.GtGt,
+        operators.RightShift,
+        expr.BinaryOp,
+      ),
       // bitwise ops
-      infix_op(8, token.And, operators.BitAnd, expr.BinaryOp, True),
-      infix_op(7, token.Caret, operators.BitXor, expr.BinaryOp, True),
-      infix_op(6, token.Pipe, operators.BitOr, expr.BinaryOp, True),
+      infix_op(
+        pratt.Left(precedence.bitwise_and),
+        token.And,
+        operators.BitAnd,
+        expr.BinaryOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.bitwise_xor),
+        token.Caret,
+        operators.BitXor,
+        expr.BinaryOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.bitwise_or),
+        token.Pipe,
+        operators.BitOr,
+        expr.BinaryOp,
+      ),
       // comparison ops
-      infix_op(5, token.EqEq, operators.Equals, expr.BinaryOp, True),
-      infix_op(5, token.NotEq, operators.NotEquals, expr.BinaryOp, True),
-      infix_op(5, token.Lt, operators.LessThan, expr.BinaryOp, True),
-      infix_op(5, token.LtEq, operators.LessThanEquals, expr.BinaryOp, True),
-      infix_op(5, token.Gt, operators.GreaterThan, expr.BinaryOp, True),
-      infix_op(5, token.GtEq, operators.GreaterThanEquals, expr.BinaryOp, True),
-      infix_op(5, token.In, operators.In, expr.BinaryOp, True),
-      infix_op(5, token.NotIn, operators.NotIn, expr.BinaryOp, True),
+      infix_op(
+        pratt.Left(precedence.comparison),
+        token.EqEq,
+        operators.Equals,
+        expr.BinaryOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.comparison),
+        token.NotEq,
+        operators.NotEquals,
+        expr.BinaryOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.comparison),
+        token.Lt,
+        operators.LessThan,
+        expr.BinaryOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.comparison),
+        token.LtEq,
+        operators.LessThanEquals,
+        expr.BinaryOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.comparison),
+        token.Gt,
+        operators.GreaterThan,
+        expr.BinaryOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.comparison),
+        token.GtEq,
+        operators.GreaterThanEquals,
+        expr.BinaryOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.comparison),
+        token.In,
+        operators.In,
+        expr.BinaryOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.comparison),
+        token.NotIn,
+        operators.NotIn,
+        expr.BinaryOp,
+      ),
       // boolean ops
-      infix_op(4, token.AndAnd, operators.BoolAnd, expr.BinaryOp, True),
-      infix_op(3, token.PipePipe, operators.BoolOr, expr.BinaryOp, True),
+      infix_op(
+        pratt.Left(precedence.boolean_and),
+        token.AndAnd,
+        operators.BoolAnd,
+        expr.BinaryOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.boolean_or),
+        token.PipePipe,
+        operators.BoolOr,
+        expr.BinaryOp,
+      ),
       // pipeline op
-      infix_op(2, token.Triangle, operators.Pipe, expr.BinaryOp, True),
+      infix_op(
+        pratt.Left(precedence.pipe),
+        token.Triangle,
+        operators.Pipe,
+        expr.BinaryOp,
+      ),
       // assignment ops
-      infix_op(1, token.Eq, operators.Assign, expr.AssignOp, True),
-      infix_op(1, token.PlusEq, operators.PlusAssign, expr.AssignOp, True),
-      infix_op(1, token.MinusEq, operators.MinusAssign, expr.AssignOp, True),
-      infix_op(1, token.StarEq, operators.TimesAssign, expr.AssignOp, True),
-      infix_op(1, token.SlashEq, operators.DivideAssign, expr.AssignOp, True),
-      infix_op(1, token.PercentEq, operators.ModulusAssign, expr.AssignOp, True),
-      infix_op(1, token.StarStarEq, operators.PowerAssign, expr.AssignOp, True),
-      infix_op(1, token.AndAndEq, operators.BoolAndAssign, expr.AssignOp, True),
-      infix_op(1, token.PipePipeEq, operators.BoolOrAssign, expr.AssignOp, True),
-      infix_op(1, token.AndEq, operators.BitAndAssign, expr.AssignOp, True),
-      infix_op(1, token.PipeEq, operators.BitOrAssign, expr.AssignOp, True),
-      infix_op(1, token.CaretEq, operators.BitXorAssign, expr.AssignOp, True),
-      infix_op(1, token.LtLtEq, operators.LeftShiftAssign, expr.AssignOp, True),
-      infix_op(1, token.GtGtEq, operators.RightShiftAssign, expr.AssignOp, True),
+      infix_op(
+        pratt.Left(precedence.assignment),
+        token.Eq,
+        operators.Assign,
+        expr.AssignOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.assignment),
+        token.PlusEq,
+        operators.PlusAssign,
+        expr.AssignOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.assignment),
+        token.MinusEq,
+        operators.MinusAssign,
+        expr.AssignOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.assignment),
+        token.StarEq,
+        operators.TimesAssign,
+        expr.AssignOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.assignment),
+        token.SlashEq,
+        operators.DivideAssign,
+        expr.AssignOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.assignment),
+        token.PercentEq,
+        operators.ModulusAssign,
+        expr.AssignOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.assignment),
+        token.StarStarEq,
+        operators.PowerAssign,
+        expr.AssignOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.assignment),
+        token.AndAndEq,
+        operators.BoolAndAssign,
+        expr.AssignOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.assignment),
+        token.PipePipeEq,
+        operators.BoolOrAssign,
+        expr.AssignOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.assignment),
+        token.AndEq,
+        operators.BitAndAssign,
+        expr.AssignOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.assignment),
+        token.PipeEq,
+        operators.BitOrAssign,
+        expr.AssignOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.assignment),
+        token.CaretEq,
+        operators.BitXorAssign,
+        expr.AssignOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.assignment),
+        token.LtLtEq,
+        operators.LeftShiftAssign,
+        expr.AssignOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.assignment),
+        token.GtGtEq,
+        operators.RightShiftAssign,
+        expr.AssignOp,
+      ),
     ],
     or_error: "Expected expression",
   )
@@ -206,28 +436,27 @@ pub fn parse_expr() {
 pub fn parse_type() {
   pratt.expression(
     one_of: [
-      fn(_) { token(token.IntType) |> chomp.replace(types.IntType) },
-      fn(_) { token(token.FloatType) |> chomp.replace(types.FloatType) },
-      fn(_) { token(token.CharType) |> chomp.replace(types.CharType) },
-      fn(_) { token(token.StringType) |> chomp.replace(types.StringType) },
-      fn(_) { token(token.BooleanType) |> chomp.replace(types.BooleanType) },
-      fn(_) { token(token.VoidType) |> chomp.replace(types.VoidType) },
-      fn(_) { token(token.NeverType) |> chomp.replace(types.NeverType) },
-      fn(_) { token(token.Underscore) |> chomp.replace(types.InferType) },
+      fn(_) { try_token(token.IntType) |> chomp.replace(types.IntType) },
+      fn(_) { try_token(token.FloatType) |> chomp.replace(types.FloatType) },
+      fn(_) { try_token(token.CharType) |> chomp.replace(types.CharType) },
+      fn(_) { try_token(token.StringType) |> chomp.replace(types.StringType) },
+      fn(_) { try_token(token.BooleanType) |> chomp.replace(types.BooleanType) },
+      fn(_) { try_token(token.VoidType) |> chomp.replace(types.VoidType) },
+      fn(_) { try_token(token.NeverType) |> chomp.replace(types.NeverType) },
+      fn(_) { try_token(token.Underscore) |> chomp.replace(types.InferType) },
       // list type
       fn(config) {
         delimited(
-          "list type",
           token(token.ListStart),
           pratt.sub_expression(config, 0),
           token(token.RBracket),
         )
+        |> chomp.in("list type")
         |> chomp.map(types.ListType)
       },
       // map type
       fn(config) {
         delimited(
-          "map type",
           token(token.MapStart),
           {
             use key <- do_in("map type", pratt.sub_expression(config, 0))
@@ -237,15 +466,16 @@ pub fn parse_type() {
           },
           token(token.RBrace),
         )
+        |> chomp.in("map type")
       },
       // tuple type
       fn(config) {
         delimited(
-          "tuple type",
           token(token.TupleStart),
           sequence_trailing(pratt.sub_expression(config, 0), token(token.Comma)),
           token(token.RParen),
         )
+        |> chomp.in("tuple type")
         |> chomp.map(types.TupleType)
       },
       // function type
@@ -253,7 +483,6 @@ pub fn parse_type() {
         use params <- do_in(
           "function type",
           delimited(
-            "function type",
             token(token.LParen),
             sequence_trailing(
               pratt.sub_expression(config, 0),
@@ -262,119 +491,111 @@ pub fn parse_type() {
             token(token.RParen),
           ),
         )
-        use _ <- do_in("function type", token(token.Arrow))
-        use return_type <- do_in(
-          "function type",
-          pratt.sub_expression(config, 1),
-        )
+        use _ <- do(token(token.Arrow))
+        use return_type <- do(pratt.sub_expression(config, 1))
 
         return(types.FuncType(params:, return_type:))
       },
       // reference type
       fn(_) {
         use name <- do_in("reference type", parse_identifier())
-        use generics <- do_in(
-          "reference type",
-          chomp.or(parse_generic_args(), []),
-        )
+        use generics <- do(chomp.or(parse_generic_args(), []))
 
         return(types.Reference(name:, generics:))
       },
       fn(config) {
         delimited(
-          "grouped type",
           token(token.LParen),
-          pratt.sub_expression(config, 0) |> chomp.map(types.GroupedType),
+          pratt.sub_expression(config, 0),
           token(token.RParen),
         )
+        |> chomp.in("grouped type")
+        |> chomp.map(types.GroupedType)
       },
     ],
-    and_then: [pratt.infix_left(1, token(token.Plus), types.Intersection)],
+    and_then: [
+      pratt.infix(pratt.Left(1), token(token.Plus), types.Intersection),
+    ],
     or_error: "Expected type",
   )
   |> chomp.backtrackable
 }
 
 fn parse_int() -> Parser(Int) {
-  use t <- do_in("integer literal", chomp.any())
+  {
+    use t <- chomp.take_map
 
-  case t {
-    token.BinaryInt(value)
-    | token.OctalInt(value)
-    | token.HexInt(value)
-    | token.DecimalInt(value) -> return(value)
-    _ -> fail("Expected an integer literal")
+    case t {
+      token.BinaryInt(value)
+      | token.OctalInt(value)
+      | token.HexInt(value)
+      | token.DecimalInt(value) -> Some(value)
+      _ -> None
+    }
   }
+  |> chomp.in("integer literal")
 }
 
 fn parse_float() -> Parser(Float) {
-  use t <- do_in("float literal", chomp.any())
+  {
+    use t <- chomp.take_map()
 
-  case t {
-    token.FloatBothParts(value)
-    | token.FloatFirstPart(value)
-    | token.FloatSecondPart(value)
-    | token.FloatNoExponent(value)
-    | token.FloatInt(value) -> return(value)
-    _ -> fail("Expected a float literal")
+    case t {
+      token.FloatBothParts(value)
+      | token.FloatFirstPart(value)
+      | token.FloatSecondPart(value)
+      | token.FloatNoExponent(value)
+      | token.FloatInt(value) -> Some(value)
+      _ -> None
+    }
   }
+  |> chomp.in("float literal")
 }
 
 fn parse_boolean() -> Parser(Bool) {
-  use t <- do_in("boolean literal", chomp.any())
+  {
+    use t <- chomp.take_map()
 
-  case t {
-    token.True -> return(True)
-    token.False -> return(False)
-    _ -> fail("Expected `true` or `false`")
+    case t {
+      token.True -> Some(True)
+      token.False -> Some(False)
+      _ -> None
+    }
   }
+  |> chomp.in("boolean literal")
 }
 
 fn parse_char() -> Parser(UtfCodepoint) {
-  use t <- do_in("char literal", chomp.any())
+  {
+    use t <- chomp.take_map()
 
-  case t {
-    token.CharUnicode(value) ->
-      case string.utf_codepoint(value) {
-        Ok(val) -> return(val)
-        Error(_) ->
-          fail("Invalid unicode codepoint: U+" <> int.to_base16(value))
-      }
-    token.CharEscape(escape) ->
-      case escape {
-        expr.Backslash -> {
-          let assert Ok(val) = string.utf_codepoint(92)
-          return(val)
-        }
-        expr.Newline -> {
-          let assert Ok(val) = string.utf_codepoint(10)
-          return(val)
-        }
-        expr.Carriage -> {
-          let assert Ok(val) = string.utf_codepoint(13)
-          return(val)
-        }
-        expr.Tab -> {
-          let assert Ok(val) = string.utf_codepoint(9)
-          return(val)
-        }
-        expr.Apostrophe -> {
-          let assert Ok(val) = string.utf_codepoint(39)
-          return(val)
-        }
-        _ ->
-          panic as "Invalid escape code in char literal, should be prevented in lexing"
-      }
-    token.Char(value) -> return(value)
-    _ -> fail("Expected a char literal")
+    case t {
+      token.CharUnicode(value) ->
+        string.utf_codepoint(value) |> option.from_result
+      token.CharEscape(expr.Backslash) ->
+        string.utf_codepoint(92) |> option.from_result
+      token.CharEscape(expr.Newline) ->
+        string.utf_codepoint(10) |> option.from_result
+      token.CharEscape(expr.Carriage) ->
+        string.utf_codepoint(13) |> option.from_result
+      token.CharEscape(expr.Tab) ->
+        string.utf_codepoint(9) |> option.from_result
+      token.CharEscape(expr.Apostrophe) ->
+        string.utf_codepoint(39) |> option.from_result
+      token.CharEscape(_) -> None
+      token.Char(value) -> Some(value)
+      _ -> None
+    }
   }
+  |> chomp.in("char literal")
 }
 
 fn parse_string(config) -> Parser(List(expr.StringPart)) {
-  chomp.many(
+  use _ <- do_in("string literal", try_token(token.StringStart))
+  use value <- do(chomp.until(
     chomp.one_of([
       {
-        use t <- do_in("string literal", chomp.any())
+        use t <- do(chomp.any())
 
         case t {
           token.StringUnicode(codepoint) ->
@@ -392,10 +613,7 @@ fn parse_string(config) -> Parser(List(expr.StringPart)) {
               "interpolated expression",
               pratt.sub_expression(config, 0),
             )
-            use _ <- do_in(
-              "interpolated_expr",
-              token(token.StringInterpolationEnd),
-            )
+            use _ <- do(token(token.StringInterpolationEnd))
             return(expr.InterpolatedExpr(value))
           }
           _ ->
@@ -403,80 +621,123 @@ fn parse_string(config) -> Parser(List(expr.StringPart)) {
         }
       },
     ]),
-  )
-  |> delimited(
-    "string literal",
-    token(token.StringStart),
-    _,
-    token(token.StringEnd),
-  )
+    token.StringEnd,
+  ))
+
+  return(value)
 }
 
-fn parse_ex_range(config) -> Parser(expr.Expr) {
-  use min <- do(optional(pratt.sub_expression(config, 0)))
-  use _ <- do(token(token.DotDot))
-  use max <- do(optional(pratt.sub_expression(config, 0)))
-
-  return(expr.Range(expr.Exclusive(min:, max:)))
+fn parse_ex_range_full() {
+  try_token(token.DotDot)
+  |> chomp.replace(expr.Range(expr.Full))
 }
 
-fn parse_in_range(config) -> Parser(expr.Expr) {
-  use min <- do(optional(pratt.sub_expression(config, 0)))
-  use _ <- do(token(token.DotDot))
-  use max <- do(pratt.sub_expression(config, 0))
+fn parse_ex_range() {
+  pratt.infix(pratt.Left(precedence.range), token(token.DotDot), fn(min, max) {
+    expr.Range(expr.Exclusive(min, max))
+  })
+}
 
-  return(expr.Range(expr.Inclusive(min:, max:)))
+fn parse_in_range() {
+  pratt.infix(pratt.Left(precedence.range), token(token.DotDotEq), fn(min, max) {
+    expr.Range(expr.Inclusive(min, max))
+  })
+}
+
+fn parse_closure(config) -> Parser(expr.Expr) {
+  config
+  |> pratt.prefix_custom(
+    precedence.closure,
+    fn(_) {
+      use generics <- do_in(
+        "closure expression",
+        chomp.or(parse_generic_params(), []),
+      )
+      use params <- do(
+        delimited(
+          try_token(token.LParen),
+          sequence_trailing(parse_func_param(), try_token(token.Comma)),
+          try_token(token.RParen),
+        )
+        |> chomp.backtrackable,
+      )
+      use return_type <- do(
+        optional({
+          use _ <- do(try_token(token.Colon))
+          use it <- do(parse_type())
+          return(it)
+        }),
+      )
+      use _ <- do(try_token(token.Arrow))
+
+      return(expr.Closure(params:, generics:, return_type:, body: _))
+    },
+    fn(body, data) { data(body) },
+  )
 }
 
 fn parse_for_loop(config) -> Parser(expr.Expr) {
-  use _ <- do_in("for loop", token(token.For))
-  use label <- do_in(
-    "for loop",
-    optional({
-      use _ <- do_in("for loop label", token(token.AtSign))
-      use label <- do_in("for loop label", parse_identifier())
-      return(label)
-    }),
-  )
-  use _ <- do_in("for loop", token(token.LParen))
-  use variable <- do_in("for loop", parse_pattern())
-  use _ <- do_in("for loop", token(token.In))
-  use iterable <- do_in("for loop", pratt.sub_expression(config, 0))
-  use _ <- do_in("for loop", token(token.RParen))
-  use body <- do_in("for loop", pratt.sub_expression(config, 0))
+  config
+  |> pratt.prefix_custom(
+    0,
+    fn(config) {
+      use _ <- do_in("for loop", try_token(token.For))
+      use label <- do_in(
+        "for loop label",
+        optional({
+          use _ <- do(token(token.AtSign))
+          use label <- do(parse_identifier())
+          return(label)
+        }),
+      )
+      use _ <- do(token(token.LParen))
+      use variable <- do(parse_pattern())
+      use _ <- do(token(token.In))
+      use iterable <- do(pratt.sub_expression(config, 0))
+      use _ <- do(token(token.RParen))
 
-  return(expr.For(variable:, iterable:, label:, body:))
+      return(expr.For(variable:, iterable:, label:, body: _))
+    },
+    fn(body, data) { data(body) },
+  )
 }
 
 fn parse_while_loop(config) -> Parser(expr.Expr) {
-  use _ <- do_in("while loop", token(token.While))
-  use label <- do_in(
-    "while loop",
-    optional({
-      use _ <- do_in("while loop label", token(token.AtSign))
-      use label <- do_in("while loop label", parse_identifier())
-      return(label)
-    }),
+  config
+  |> pratt.prefix_custom(
+    0,
+    fn(config) {
+      use _ <- do_in("while loop", try_token(token.While))
+      use label <- do(
+        optional({
+          use _ <- do_in("while loop label", token(token.AtSign))
+          use label <- do(parse_identifier())
+          return(label)
+        }),
+      )
+      use _ <- do(token(token.LParen))
+      use condition <- do(pratt.sub_expression(config, 0))
+      use _ <- do(token(token.RParen))
+      return(expr.While(condition:, label:, body: _))
+    },
+    fn(body, data) { data(body) },
   )
-  use _ <- do_in("while loop", token(token.LParen))
-  use condition <- do_in("while loop", pratt.sub_expression(config, 0))
-  use _ <- do_in("while loop", token(token.RParen))
-  use body <- do_in("while loop", pratt.sub_expression(config, 0))
-
-  return(expr.While(condition:, label:, body:))
 }
 
 fn parse_if(config) -> Parser(expr.Expr) {
-  use _ <- do_in("if expression", token(token.If))
-  use _ <- do_in("if expression", token(token.LParen))
-  use condition <- do_in("if expression", pratt.sub_expression(config, 0))
-  use _ <- do_in("if expression", token(token.RParen))
-  use then <- do_in("if expression", pratt.sub_expression(config, 0))
-  use otherwise <- do_in(
-    "if expression",
+  use _ <- do_in("if expression", try_token(token.If))
+  use _ <- do(token(token.LParen))
+  use condition <- do(delimited(
+    token(token.LParen),
+    pratt.sub_expression(config, 0),
+    token(token.RParen),
+  ))
+  use _ <- do(token(token.RParen))
+  use then <- do(pratt.sub_expression(config, 0))
+  use otherwise <- do(
     optional({
-      use _ <- do_in("if expression", token(token.Else))
-      use otherwise <- do_in("if expression", pratt.sub_expression(config, 0))
+      use _ <- do_in("else clause", try_token(token.Else))
+      use otherwise <- do(pratt.sub_expression(config, 0))
       return(otherwise)
     }),
   )
@@ -484,106 +745,101 @@ fn parse_if(config) -> Parser(expr.Expr) {
   return(expr.If(condition:, then:, otherwise:))
 }
 
-fn parse_function_call(config) -> Parser(expr.Expr) {
-  use func <- do_in("function call", pratt.sub_expression(config, 16))
-  use generics <- do_in("function call", chomp.or(parse_generic_args(), []))
-  use args <- do_in(
-    "function call",
-    delimited(
-      "function call",
-      token(token.LParen),
-      sequence_trailing(parse_call_arg(config), token(token.Comma)),
-      token(token.RParen),
-    ),
-  )
+fn parse_function_call() {
+  pratt.postfix_custom(
+    precedence.function_call,
+    fn(config) {
+      use generics <- do_in("function call", chomp.or(parse_generic_args(), []))
+      use args <- do(delimited(
+        token(token.LParen),
+        sequence_trailing(parse_call_arg(config), token(token.Comma)),
+        token(token.RParen),
+      ))
 
-  return(expr.Call(func:, generics:, args:))
+      return(expr.Call(func: _, generics:, args:))
+    },
+    fn(func, data) { data(func) },
+  )
 }
 
 fn parse_call_arg(config) -> Parser(expr.CallArg) {
   use name <- do_in(
     "function call argument",
     optional({
-      use name <- do_in("function call argument", parse_identifier())
-      use _ <- do_in("function call argument", token(token.Eq))
+      use name <- do(chomp.backtrackable(parse_identifier()))
+      use _ <- do(token(token.Eq))
       return(name)
     }),
   )
-  use spread <- do_in(
-    "function call argument",
-    optional(token(token.Spread)) |> chomp.map(option.is_some),
-  )
-  use value <- do_in("function call argument", pratt.sub_expression(config, 0))
+  use spread <- do(optional(token(token.Spread)) |> chomp.map(option.is_some))
+  use value <- do(pratt.sub_expression(config, 0))
 
   return(expr.CallArg(name:, spread:, value:))
 }
 
-fn parse_member_access(config) -> Parser(expr.Expr) {
-  use parent <- do_in(
-    "member access expression",
-    pratt.sub_expression(config, 15),
+fn parse_member_access() {
+  pratt.postfix_custom(
+    precedence.member_access,
+    fn(_) {
+      use _ <- do_in("member access expression", token(token.Dot))
+      use member <- do(parse_identifier())
+      return(member)
+    },
+    expr.MemberAccess,
   )
-  use _ <- do_in("member access expression", token(token.Dot))
-  use member <- do_in("member access expression", parse_identifier())
-
-  return(expr.MemberAccess(parent:, member:))
 }
 
-fn parse_index_access(config) -> Parser(expr.Expr) {
-  use parent <- do_in(
-    "index access expression",
-    pratt.sub_expression(config, 14),
+fn parse_index_access() {
+  pratt.postfix_custom(
+    precedence.index_access,
+    fn(config) {
+      delimited(
+        token(token.LBracket),
+        pratt.sub_expression(config, 0),
+        token(token.RBracket),
+      )
+      |> chomp.in("index access expression")
+    },
+    expr.IndexAccess,
   )
-  use index <- do_in(
-    "index access expression",
-    delimited(
-      "index access expression",
-      token(token.LBracket),
-      pratt.sub_expression(config, 0),
-      token(token.RBracket),
-    ),
-  )
-
-  return(expr.IndexAccess(parent:, index:))
 }
 
 fn parse_return(config) -> Parser(expr.Expr) {
   use _ <- do_in("return expression", token(token.Return))
-  use label <- do_in(
-    "return expression",
+  use label <- do(
     optional({
       use _ <- do_in("return label", token(token.AtSign))
-      use label <- do_in("return label", parse_identifier())
+      use label <- do(parse_identifier())
       return(label)
     }),
   )
-  use value <- do_in("return expression", pratt.sub_expression(config, 0))
-
-  return(expr.Return(value, label))
+  use value <- do(
+    optional(pratt.sub_expression(config, precedence.return_break)),
+  )
+  return(expr.Return(value:, label:))
 }
 
 fn parse_break(config) -> Parser(expr.Expr) {
   use _ <- do_in("break expression", token(token.Break))
-  use label <- do_in(
-    "break expression",
+  use label <- do(
     optional({
       use _ <- do_in("break label", token(token.AtSign))
-      use label <- do_in("break label", parse_identifier())
+      use label <- do(parse_identifier())
       return(label)
     }),
   )
-  use value <- do_in("break expression", pratt.sub_expression(config, 0))
-
-  return(expr.Break(value, label))
+  use value <- do(
+    optional(pratt.sub_expression(config, precedence.return_break)),
+  )
+  return(expr.Break(value:, label:))
 }
 
-fn parse_continue(_) -> Parser(expr.Expr) {
+fn parse_continue() -> Parser(expr.Expr) {
   use _ <- do_in("continue expression", token(token.Continue))
-  use label <- do_in(
-    "continue expression",
+  use label <- do(
     optional({
       use _ <- do_in("continue label", token(token.AtSign))
-      use label <- do_in("continue label", parse_identifier())
+      use label <- do(parse_identifier())
       return(label)
     }),
   )
@@ -591,22 +847,61 @@ fn parse_continue(_) -> Parser(expr.Expr) {
   return(expr.Continue(label))
 }
 
-fn parse_type_op(config) -> Parser(expr.Expr) {
-  use lhs <- do_in(
-    "type operation expression",
-    pratt.sub_expression(config, 12),
+fn parse_type_op() {
+  pratt.postfix_custom(
+    precedence.type_op,
+    fn(_) {
+      use op <- do_in(
+        "type operation expression",
+        chomp.one_of([
+          token(token.As) |> chomp.replace(operators.As),
+          token(token.Is) |> chomp.replace(operators.Is),
+          token(token.NotIs) |> chomp.replace(operators.NotIs),
+        ]),
+      )
+      use rhs <- do(parse_type())
+      return(#(op, rhs))
+    },
+    fn(lhs, data) {
+      let #(op, rhs) = data
+      expr.TypeOp(lhs:, op:, rhs:)
+    },
   )
-  use op <- do_in(
-    "type operation expression",
-    chomp.one_of([
-      token(token.As) |> chomp.replace(operators.As),
-      token(token.Is) |> chomp.replace(operators.Is),
-      token(token.NotIs) |> chomp.replace(operators.NotIs),
-    ]),
-  )
-  use rhs <- do_in("type operation expression", parse_type())
+}
 
-  return(expr.TypeOp(lhs:, op:, rhs:))
+fn parse_block_expr() {
+  use label <- do(
+    optional({
+      use label <- do(chomp.backtrackable(parse_identifier()))
+      use _ <- do(token(token.AtSign))
+      return(label)
+    }),
+  )
+
+  delimited(
+    token(token.LBrace),
+    chomp.many(
+      chomp.one_of([
+        parse_expr() |> chomp.map(expr.Expr),
+        parse_let()
+          |> chomp.map(fn(decl) {
+            let assert declaration.Let(
+              value:,
+              meta: declaration.LetDeclaration(
+                mutable:,
+                name:,
+                type_:,
+                visibility: _,
+              ),
+            ) = decl
+            expr.Let(name:, type_:, mutable:, value:)
+          }),
+      ]),
+    ),
+    token(token.RBrace),
+  )
+  |> chomp.in("block expression")
+  |> chomp.map(fn(body) { expr.Block(body:, label:) })
 }
 
 fn parse_pattern() -> Parser(expr.Pattern) {
@@ -647,25 +942,24 @@ fn parse_pattern() -> Parser(expr.Pattern) {
       fn(_) { parse_identifier() |> chomp.map(expr.IdentifierPattern) },
       fn(config) {
         delimited(
-          "list pattern",
           token(token.ListStart),
           sequence_trailing(pratt.sub_expression(config, 0), token(token.Comma)),
           token(token.RBracket),
         )
+        |> chomp.in("list pattern")
         |> chomp.map(expr.ListPattern)
       },
       fn(config) {
         delimited(
-          "tuple pattern",
           token(token.TupleStart),
           sequence_trailing(pratt.sub_expression(config, 0), token(token.Comma)),
           token(token.RParen),
         )
+        |> chomp.in("tuple pattern")
         |> chomp.map(expr.TuplePattern)
       },
       fn(config) {
         delimited(
-          "map pattern",
           token(token.MapStart),
           sequence_trailing(
             chomp.one_of([
@@ -687,6 +981,7 @@ fn parse_pattern() -> Parser(expr.Pattern) {
           ),
           token(token.RBrace),
         )
+        |> chomp.in("map pattern")
         |> chomp.map(expr.MapPattern)
       },
       fn(_) {
@@ -720,28 +1015,32 @@ fn parse_pattern() -> Parser(expr.Pattern) {
       },
       fn(config) {
         delimited(
-          "grouped pattern",
           token(token.LParen),
           pratt.sub_expression(config, 0) |> chomp.map(expr.GroupedPattern),
           token(token.RParen),
         )
+        |> chomp.in("grouped pattern")
       },
     ],
-    and_then: [pratt.infix_left(1, token(token.Pipe), expr.DisjunctionPattern)],
+    and_then: [
+      pratt.infix(pratt.Left(1), token(token.Pipe), expr.DisjunctionPattern),
+    ],
     or_error: "Expected pattern",
   )
 }
 
 fn parse_generic_args() -> Parser(List(types.GenericArg)) {
   delimited(
-    "generic argument list",
     token(token.Lt),
-    sequence_trailing(
+    sequence_trailing1(
       {
         use name <- do_in(
           "generic argument",
           optional({
-            use it <- do_in("generic argument", parse_identifier())
+            use it <- do_in(
+              "generic argument",
+              chomp.backtrackable(parse_identifier()),
+            )
             use _ <- do_in("generic argument", token(token.Eq))
             return(it)
           }),
@@ -754,53 +1053,82 @@ fn parse_generic_args() -> Parser(List(types.GenericArg)) {
     ),
     token(token.Gt),
   )
+  |> chomp.in("generic argument list")
+}
+
+fn parse_generic_params() -> Parser(List(types.GenericParam)) {
+  delimited(
+    token(token.Lt),
+    sequence_trailing1(
+      {
+        use name <- do(parse_identifier())
+        use constraint <- do(
+          optional({
+            use _ <- do(token(token.Colon))
+            use it <- do(parse_type())
+            return(it)
+          }),
+        )
+        use default <- do(
+          optional({
+            use _ <- do(token(token.Eq))
+            use it <- do(parse_type())
+            return(it)
+          }),
+        )
+        return(types.GenericParam(name:, constraint:, default:))
+      },
+      token(token.Comma),
+    ),
+    token(token.Gt),
+  )
+  |> chomp.in("generic parameter list")
 }
 
 fn parse_visibility() -> Parser(declaration.Visibility) {
   chomp.one_of([
-    token(token.Public) |> chomp.replace(declaration.Public),
-    token(token.Internal) |> chomp.replace(declaration.Internal),
-    token(token.Private) |> chomp.replace(declaration.Private),
+    try_token(token.Public) |> chomp.replace(declaration.Public),
+    try_token(token.Internal) |> chomp.replace(declaration.Internal),
+    try_token(token.Private) |> chomp.replace(declaration.Private),
   ])
+  |> chomp.backtrackable
 }
 
 fn parse_identifier() -> Parser(String) {
-  use t <- do_in("identifier", chomp.any())
+  {
+    use t <- chomp.take_map
 
-  case t {
-    token.Identifier(name) -> return(name)
-    _ -> fail("Expected an identifier")
+    case t {
+      token.Identifier(name) -> Some(name)
+      _ -> None
+    }
   }
+  |> chomp.in("identifier")
 }
 
 fn infix_op(
-  precedence: Int,
+  precedence: pratt.Precedence,
   token: token.NymphToken,
   op: b,
   constructor: fn(a, b, a) -> a,
-  left_assoc: Bool,
 ) {
-  case left_assoc {
-    True ->
-      pratt.infix_left(precedence, chomp.token(token), fn(lhs, rhs) {
-        constructor(lhs, op, rhs)
-      })
-    False ->
-      pratt.infix_right(precedence, chomp.token(token), fn(lhs, rhs) {
-        constructor(lhs, op, rhs)
-      })
+  pratt.infix(precedence, chomp.token(token), fn(lhs, rhs) {
+    constructor(lhs, op, rhs)
+  })
+}
+
+fn try_token(tok: token.NymphToken) -> Parser(Nil) {
+  use t <- chomp.take_map
+  case t == tok {
+    True -> Some(Nil)
+    False -> None
   }
 }
 
-fn delimited(
-  ctx: String,
-  start: Parser(_),
-  parser: Parser(a),
-  end: Parser(_),
-) -> Parser(a) {
-  use _ <- do_in(ctx, start)
-  use it <- do_in(ctx, parser)
-  use _ <- do_in(ctx, end)
+fn delimited(start: Parser(_), parser: Parser(a), end: Parser(_)) -> Parser(a) {
+  use _ <- do(start)
+  use it <- do(parser)
+  use _ <- do(end)
   return(it)
 }
 
@@ -818,4 +1146,15 @@ fn sequence_trailing(
       return(items)
     }
   }
+}
+
+fn sequence_trailing1(
+  parser: Parser(a),
+  separator sep: Parser(x),
+) -> Parser(List(a)) {
+  use items <- do(chomp.sequence(parser, sep))
+  use tail <- do(parser)
+  use _ <- do(chomp.optional(sep))
+
+  return(items |> list.append([tail]))
 }

@@ -139,7 +139,7 @@ pub type NymphToken {
   ExclamationMark
   /// +
   Plus
-  /// -
+  /// \-
   Minus
   /// *
   Star

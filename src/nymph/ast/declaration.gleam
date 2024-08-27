@@ -1,6 +1,6 @@
 import gleam/dict.{type Dict}
 import gleam/option.{type Option}
-import nymph/ast/expr.{type Expr, type Pattern}
+import nymph/ast/expr.{type Expr, type FuncParam}
 import nymph/ast/types.{type GenericArg, type GenericParam, type Type}
 import nymph/ast/utils.{type Ident}
 
@@ -214,8 +214,4 @@ pub type EnumVariant {
     name: Ident,
     fields: List(StructField),
   )
-}
-
-pub type FuncParam {
-  FuncParam(spread: Bool, name: Pattern, type_: Type, default: Option(Expr))
 }
