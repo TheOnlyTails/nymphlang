@@ -10,9 +10,10 @@ import pprint
 pub fn main() {
   let source =
     "
-    func factorial(n: int) -> match (n) {
-      ..=1 -> 1,
-      n -> n * factorial(n - 1)
+    struct A {
+      namespace {
+        let x = 1
+      }
     }
     "
     |> dedent.dedent
