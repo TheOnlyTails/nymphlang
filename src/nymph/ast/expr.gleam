@@ -1,4 +1,3 @@
-import gleam/dict.{type Dict}
 import gleam/option.{type Option}
 import nymph/ast/operators
 import nymph/ast/types.{type GenericArg, type GenericParam, type Type}
@@ -16,9 +15,9 @@ pub type Expr {
   String(List(StringPart))
   Boolean(Bool)
   Identifier(Ident)
-  List(List(Expr))
-  Tuple(List(Expr))
-  Map(Dict(Expr, Expr))
+  List(List(ListItem))
+  Tuple(List(ListItem))
+  Map(List(MapEntry))
   Struct(name: Ident, fields: List(StructLiteralField))
   Range(RangeKind)
   Call(func: Expr, generics: List(GenericArg), args: List(CallArg))
@@ -65,10 +64,20 @@ pub type EscapeSequence {
   Quote
 }
 
+pub type ListItem {
+  ExprItem(value: Expr)
+  SpreadItem(iterable: Expr)
+}
+
+pub type MapEntry {
+  ExprEntry(key: Expr, value: Expr)
+  SpreadEntry(iterable: Expr)
+}
+
 pub type StructLiteralField {
-  Named(name: Ident, value: Expr)
-  Shorthand(name: Ident)
-  Spread(iterable: Expr)
+  NamedField(name: Ident, value: Expr)
+  ShorthandField(name: Ident)
+  SpreadField(iterable: Expr)
 }
 
 pub type FuncParam {
@@ -116,8 +125,8 @@ pub type RangePatternKind {
 }
 
 pub type StructPatternField {
-  NamedField(name: Ident, value: Option(Pattern))
-  RestField
+  NamedFieldPattern(name: Ident, value: Option(Pattern))
+  RestFieldPattern
 }
 
 pub type MapPatternEntry {

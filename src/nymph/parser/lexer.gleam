@@ -102,7 +102,8 @@ pub fn lexer() -> lexer.Lexer(NymphToken, LexMode) {
         lexer.keyword("never", "[^$_a-zA-Z]", token.NeverType),
         lexer.token("#[", token.ListStart),
         lexer.token("#(", token.TupleStart),
-        lexer.token("#{", token.MapStart),
+        lexer.token("#{", token.MapStart)
+          |> lexer.into(fn(_) { Normal(nesting + 1) }),
         lexer.token("->", token.Arrow),
         lexer.token("...", token.Spread),
         lexer.token("?", token.QuestionMark),

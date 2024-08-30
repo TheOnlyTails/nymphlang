@@ -10,9 +10,7 @@ import pprint
 pub fn main() {
   let source =
     "
-    impl Eq {
-      func equals<A, B>(curr: #(A, B), other: #(A, B)) -> curr[0] == other[0] && curr[1] == other[1]
-    }
+    #(a, ...a, b, ...b,)
     "
     |> dedent.dedent
 
@@ -31,5 +29,5 @@ pub fn main() {
     }
   }
 
-  run(tokens, parser.parser()) |> pprint.debug
+  run(tokens, parser.parse_expr()) |> pprint.debug
 }

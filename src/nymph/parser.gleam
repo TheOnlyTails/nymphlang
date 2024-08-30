@@ -442,6 +442,62 @@ pub fn parse_expr() {
       fn(_) { try_token(token.Underscore) |> chomp.replace(expr.Placeholder) },
       fn(_) { parse_ex_range_full() },
       fn(_) { parse_continue() },
+      fn(config) {
+        delimited(
+          try_token(token.ListStart),
+          sequence_trailing(
+            chomp.one_of([
+              {
+                use _ <- do(try_token(token.Spread))
+                pratt.sub_expression(config, 0) |> chomp.map(expr.SpreadItem)
+              },
+              pratt.sub_expression(config, 0) |> chomp.map(expr.ExprItem),
+            ]),
+            try_token(token.Comma),
+          ),
+          try_token(token.RBracket),
+        )
+        |> chomp.map(expr.List)
+      },
+      fn(config) {
+        delimited(
+          try_token(token.TupleStart),
+          sequence_trailing(
+            chomp.one_of([
+              {
+                use _ <- do(try_token(token.Spread))
+                pratt.sub_expression(config, 0) |> chomp.map(expr.SpreadItem)
+              },
+              pratt.sub_expression(config, 0) |> chomp.map(expr.ExprItem),
+            ]),
+            try_token(token.Comma),
+          ),
+          try_token(token.RParen),
+        )
+        |> chomp.map(expr.Tuple)
+      },
+      fn(config) {
+        delimited(
+          try_token(token.MapStart),
+          sequence_trailing(
+            chomp.one_of([
+              {
+                use _ <- do(try_token(token.Spread))
+                pratt.sub_expression(config, 0) |> chomp.map(expr.SpreadEntry)
+              },
+              {
+                use key <- do(pratt.sub_expression(config, 0))
+                use _ <- do(try_token(token.Colon))
+                use value <- do(pratt.sub_expression(config, 0))
+                return(expr.ExprEntry(key:, value:))
+              },
+            ]),
+            try_token(token.Comma),
+          ),
+          try_token(token.RBrace),
+        )
+        |> chomp.map(expr.Map)
+      },
       parse_for_loop,
       parse_while_loop,
       parse_if,
@@ -1244,7 +1300,8 @@ fn parse_pattern() -> Parser(expr.Pattern) {
               try_token(token.LBrace),
               sequence_trailing1(
                 chomp.one_of([
-                  try_token(token.Spread) |> chomp.replace(expr.RestField),
+                  try_token(token.Spread)
+                    |> chomp.replace(expr.RestFieldPattern),
                   {
                     use name <- do(parse_identifier())
                     use value <- do(
@@ -1253,7 +1310,7 @@ fn parse_pattern() -> Parser(expr.Pattern) {
                         pratt.sub_expression(config, 0)
                       }),
                     )
-                    return(expr.NamedField(name:, value:))
+                    return(expr.NamedFieldPattern(name:, value:))
                   },
                 ]),
                 try_token(token.Comma),
