@@ -193,7 +193,7 @@ fn number_lexer(
   token: fn(Int) -> NymphToken,
 ) -> lexer.Matcher(NymphToken, LexMode) {
   use text, mode <- then_try(regex_lexer_options(
-    "^" <> prefix <> "(?!0)" <> digit <> "(_?" <> digit <> ")*$",
+    "^" <> prefix <> "((?!0)" <> digit <> "(_?" <> digit <> ")*|0)$",
     case string.is_empty(prefix) {
       False -> "[" <> prefix <> "]|"
       True -> ""

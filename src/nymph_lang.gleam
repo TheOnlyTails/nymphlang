@@ -10,10 +10,8 @@ import pprint
 pub fn main() {
   let source =
     "
-    struct A {
-      namespace {
-        let x = 1
-      }
+    impl Eq {
+      func equals<A, B>(curr: #(A, B), other: #(A, B)) -> curr[0] == other[0] && curr[1] == other[1]
     }
     "
     |> dedent.dedent

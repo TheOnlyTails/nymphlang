@@ -90,7 +90,6 @@ pub type Declaration {
   Namespace(
     visibility: Option(Visibility),
     name: Ident,
-    generics: List(GenericParam),
     members: List(ImplMember),
   )
   Interface(
@@ -98,10 +97,15 @@ pub type Declaration {
     name: Ident,
     generics: List(GenericParam),
     members: List(InterfaceMember),
-    blocks: List(InterfaceInnerBlock),
   )
   /// An extension `impl` block extends a declaration with custom variables, functions, and types.
-  ImplExtension(ImplExtensionDeclaration)
+  ImplExtension(
+    visibility: Option(Visibility),
+    name: Ident,
+    generic_params: List(GenericParam),
+    generic_args: List(GenericArg),
+    members: List(ImplMember),
+  )
   /// An interface `impl` block extends a declaration using an interface.
   /// For example:
   /// ```
@@ -119,7 +123,8 @@ pub type Declaration {
     generics: List(GenericParam),
     super_name: Ident,
     super_generics: List(GenericArg),
-    type_: Type,
+    sub_name: Ident,
+    sub_generics: List(GenericArg),
     members: List(ImplMember),
   )
 }
@@ -157,15 +162,6 @@ pub type FuncDeclaration {
   )
 }
 
-pub type ImplExtensionDeclaration {
-  ImplExtensionDeclaration(
-    visibility: Option(Visibility),
-    name: Ident,
-    generics: List(GenericParam),
-    members: List(ImplMember),
-  )
-}
-
 pub type StructField {
   StructField(
     visibility: Option(Visibility),
@@ -177,10 +173,9 @@ pub type StructField {
 }
 
 pub type StructInnerMember {
-  StructNamespace(List(ImplMember))
   StructMember(ImplMember)
+  StructNamespace(members: List(ImplMember))
   StructImpl(
-    visibility: Option(Visibility),
     interface: Ident,
     generics: List(GenericArg),
     members: List(ImplMember),
@@ -190,28 +185,19 @@ pub type StructInnerMember {
 pub type ImplMember {
   ImplLet(meta: LetDeclaration, value: Expr)
   ImplFunc(meta: FuncDeclaration, body: Expr)
-  ImplTypeAlias(meta: TypeAliasDeclaration, value: Type)
-}
-
-pub type InterfaceInnerBlock {
-  InterfaceNamespace(List(ImplMember))
-  InterfaceImpl(ImplExtensionDeclaration)
 }
 
 pub type InterfaceMember {
-  InterfaceLet(meta: LetDeclaration, value: Expr)
-  InterfaceFunc(meta: FuncDeclaration, body: Expr)
-  InterfaceTypeAlias(
-    meta: TypeAliasDeclaration,
-    constraint: Option(Type),
-    value: Option(Type),
+  InterfaceNamespace(List(ImplMember))
+  InterfaceImpl(
+    interface: Ident,
+    generics: List(GenericArg),
+    members: List(ImplMember),
   )
+  InterfaceLet(meta: LetDeclaration, value: Option(Expr))
+  InterfaceFunc(meta: FuncDeclaration, body: Option(Expr))
 }
 
 pub type EnumVariant {
-  EnumVariant(
-    visibility: Option(Visibility),
-    name: Ident,
-    fields: List(StructField),
-  )
+  EnumVariant(name: Ident, fields: List(StructField))
 }

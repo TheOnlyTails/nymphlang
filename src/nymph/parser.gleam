@@ -3,6 +3,7 @@ import chomp/pratt
 import gleam/dict
 import gleam/float
 import gleam/int
+import gleam/list
 import gleam/option.{None, Some}
 import gleam/string
 import nymph/ast/declaration
@@ -37,11 +38,11 @@ fn parse_declaration() {
         parse_type_alias(visibility)
           |> chomp.map(fn(it) { declaration.TypeAlias(it.0, it.1) }),
         parse_struct(visibility),
-        // parse_enum(),
-      // parse_namespace(),
-      // parse_interface(),
-      // parse_impl_ext(),
-      // parse_impl_for(),
+        parse_enum(visibility),
+        parse_namespace(visibility),
+        parse_interface(visibility),
+        parse_impl_for(visibility) |> chomp.backtrackable,
+        parse_impl_ext(visibility),
       ])
     },
   ])
@@ -87,7 +88,12 @@ fn parse_struct_field() {
 fn parse_struct_inner_member() {
   chomp.one_of([
     parse_impl_member() |> chomp.map(declaration.StructMember),
-    parse_struct_namespace(),
+    parse_struct_namespace() |> chomp.map(declaration.StructNamespace),
+    parse_struct_impl()
+      |> chomp.map(fn(it) {
+        let #(interface, generics, members) = it
+        declaration.StructImpl(generics:, interface:, members:)
+      }),
   ])
 }
 
@@ -98,7 +104,66 @@ fn parse_struct_namespace() {
     chomp.many(parse_impl_member()),
     try_token(token.RBrace),
   ))
-  return(declaration.StructNamespace(members))
+  return(members)
+}
+
+fn parse_struct_impl() {
+  use _ <- do(try_token(token.Impl))
+  use interface <- do(parse_identifier())
+  use generics <- do(chomp.or(parse_generic_args(), []))
+  use members <- do(delimited(
+    try_token(token.LBrace),
+    chomp.many(parse_impl_member()),
+    try_token(token.RBrace),
+  ))
+
+  return(#(interface, generics, members))
+}
+
+fn parse_impl_ext(visibility) {
+  use _ <- do(try_token(token.Impl))
+  use generic_params <- do(chomp.or(parse_generic_params(), []))
+  use name <- do(parse_identifier())
+  use generic_args <- do(chomp.or(parse_generic_args(), []))
+  use members <- do(delimited(
+    try_token(token.LBrace),
+    chomp.many(parse_impl_member()),
+    try_token(token.RBrace),
+  ))
+
+  return(declaration.ImplExtension(
+    visibility:,
+    name:,
+    generic_params:,
+    generic_args:,
+    members:,
+  ))
+}
+
+fn parse_impl_for(visibility) {
+  use _ <- do(try_token(token.Impl))
+  use generics <- do(chomp.or(parse_generic_params(), []))
+  use super_name <- do(parse_identifier())
+  use super_generics <- do(chomp.or(parse_generic_args(), []))
+  use _ <- do(try_token(token.For))
+  use sub_name <- do(parse_identifier())
+  use sub_generics <- do(chomp.or(parse_generic_args(), []))
+
+  use members <- do(delimited(
+    try_token(token.LBrace),
+    chomp.many(parse_impl_member()),
+    try_token(token.RBrace),
+  ))
+
+  return(declaration.ImplFor(
+    visibility:,
+    generics:,
+    super_name:,
+    super_generics:,
+    sub_name:,
+    sub_generics:,
+    members:,
+  ))
 }
 
 fn parse_impl_member() {
@@ -109,12 +174,109 @@ fn parse_impl_member() {
       |> chomp.map(fn(it) { declaration.ImplLet(it.0, it.1) }),
     parse_func(visibility)
       |> chomp.map(fn(it) { declaration.ImplFunc(it.0, it.1) }),
-    parse_type_alias(visibility)
-      |> chomp.map(fn(it) { declaration.ImplTypeAlias(it.0, it.1) }),
   ])
 }
 
-fn parse_let(visibility) -> Parser(#(declaration.LetDeclaration, expr.Expr)) {
+fn parse_enum(visibility) {
+  use _ <- do_in("enum declaration", try_token(token.Enum))
+  use name <- do(parse_identifier())
+  use generics <- do(chomp.or(parse_generic_params(), []))
+  use #(variants, members) <- do(delimited(
+    try_token(token.LBrace),
+    {
+      use variants <- do(sequence_trailing1(
+        parse_enum_variant(),
+        try_token(token.Comma),
+      ))
+      use members <- do(chomp.many(parse_struct_inner_member()))
+      return(#(variants, members))
+    },
+    try_token(token.RBrace),
+  ))
+
+  return(declaration.Enum(visibility:, name:, generics:, variants:, members:))
+}
+
+fn parse_enum_variant() {
+  use name <- do(parse_identifier())
+  use fields <- do(
+    chomp.or(
+      delimited(
+        try_token(token.LBrace),
+        sequence_trailing(parse_struct_field(), try_token(token.Comma)),
+        try_token(token.RBrace),
+      ),
+      [],
+    ),
+  )
+
+  return(declaration.EnumVariant(name:, fields:))
+}
+
+fn parse_namespace(visibility) {
+  use _ <- do_in("namespace declaration", try_token(token.Namespace))
+  use name <- do(parse_identifier())
+  use members <- do(delimited(
+    try_token(token.LBrace),
+    chomp.many(parse_impl_member()),
+    try_token(token.RBrace),
+  ))
+
+  return(declaration.Namespace(members:, name:, visibility:))
+}
+
+fn parse_interface(visibility) {
+  use _ <- do_in("interface declaration", try_token(token.Interface))
+  use name <- do(parse_identifier())
+  use generics <- do(chomp.or(parse_generic_params(), []))
+  use members <- do(delimited(
+    try_token(token.LBrace),
+    chomp.many(parse_interface_member()),
+    try_token(token.RBrace),
+  ))
+
+  return(declaration.Interface(generics:, members:, name:, visibility:))
+}
+
+fn parse_interface_member() {
+  chomp.one_of([
+    parse_struct_namespace() |> chomp.map(declaration.InterfaceNamespace),
+    parse_struct_impl()
+      |> chomp.map(fn(it) {
+        let #(interface, generics, members) = it
+        declaration.InterfaceImpl(generics:, interface:, members:)
+      }),
+    parse_let_interface(),
+    parse_func_interface(),
+  ])
+}
+
+fn parse_let_interface() -> Parser(declaration.InterfaceMember) {
+  use visibility <- do(optional(parse_visibility()))
+  use _ <- do_in("let declaration", try_token(token.Let))
+  use mutable <- do(optional(try_token(token.Mut)) |> chomp.map(option.is_some))
+  use name <- do(parse_identifier())
+  use type_ <- do(
+    optional({
+      use _ <- do(try_token(token.Colon))
+      use type_ <- do(parse_type())
+      return(type_)
+    }),
+  )
+  use value <- do(
+    optional({
+      use _ <- do(try_token(token.Eq))
+      parse_expr()
+    }),
+  )
+
+  return(declaration.InterfaceLet(
+    meta: declaration.LetDeclaration(visibility:, mutable:, name:, type_:),
+    value:,
+  ))
+}
+
+fn parse_let(visibility) {
   use _ <- do_in("let declaration", try_token(token.Let))
   use mutable <- do(optional(try_token(token.Mut)) |> chomp.map(option.is_some))
   use name <- do(parse_identifier())
@@ -131,6 +293,43 @@ fn parse_let(visibility) -> Parser(#(declaration.LetDeclaration, expr.Expr)) {
   return(#(
     declaration.LetDeclaration(visibility:, mutable:, name:, type_:),
     value,
+  ))
+}
+
+pub fn parse_func_interface() {
+  use visibility <- do(optional(parse_visibility()))
+  use _ <- do_in("function declaration", try_token(token.Func))
+  use name <- do(parse_identifier())
+  use generics <- do(chomp.or(parse_generic_params(), []))
+  use params <- do(delimited(
+    try_token(token.LParen),
+    sequence_trailing(parse_func_param(), try_token(token.Comma)),
+    try_token(token.RParen),
+  ))
+  use return_type <- do(
+    optional({
+      use _ <- do(try_token(token.Colon))
+      use it <- do(parse_type())
+      return(it)
+    }),
+  )
+  use body <- do(
+    optional({
+      use _ <- do(try_token(token.Arrow))
+      use body <- do(parse_expr())
+      return(body)
+    }),
+  )
+
+  return(declaration.InterfaceFunc(
+    declaration.FuncDeclaration(
+      visibility:,
+      name:,
+      generics:,
+      params:,
+      return_type:,
+    ),
+    body,
   ))
 }
 
@@ -849,7 +1048,7 @@ fn parse_match(config) {
   ))
   use arms <- do(delimited(
     try_token(token.LBrace),
-    sequence_trailing(parse_match_arm(config), try_token(token.Comma)),
+    sequence_trailing1(parse_match_arm(config), try_token(token.Comma)),
     try_token(token.RBrace),
   ))
 
@@ -1037,12 +1236,41 @@ fn parse_pattern() -> Parser(expr.Pattern) {
         try_token(token.Spread)
         |> chomp.replace(expr.RestPattern)
       },
+      fn(config) {
+        use name <- do_in("struct pattern", parse_identifier())
+        use fields <- do(
+          chomp.or(
+            delimited(
+              try_token(token.LBrace),
+              sequence_trailing1(
+                chomp.one_of([
+                  try_token(token.Spread) |> chomp.replace(expr.RestField),
+                  {
+                    use name <- do(parse_identifier())
+                    use value <- do(
+                      optional({
+                        use _ <- do(try_token(token.Eq))
+                        pratt.sub_expression(config, 0)
+                      }),
+                    )
+                    return(expr.NamedField(name:, value:))
+                  },
+                ]),
+                try_token(token.Comma),
+              ),
+              try_token(token.RBrace),
+            ),
+            [],
+          ),
+        )
+        return(expr.StructPattern(name:, fields:))
+      },
       fn(_) {
         use negative <- do_in(
           "integer pattern",
           optional(try_token(token.Minus)) |> chomp.map(option.is_some),
         )
-        use value <- do_in("integer pattern", parse_int())
+        use value <- do(parse_int())
 
         expr.IntPattern(case negative {
           True -> -value
@@ -1055,7 +1283,7 @@ fn parse_pattern() -> Parser(expr.Pattern) {
           "float pattern",
           optional(try_token(token.Minus)) |> chomp.map(option.is_some),
         )
-        use value <- do_in("float pattern", parse_float())
+        use value <- do(parse_float())
 
         expr.FloatPattern(case negative {
           True -> float.negate(value)
@@ -1065,7 +1293,6 @@ fn parse_pattern() -> Parser(expr.Pattern) {
       },
       fn(_) { parse_boolean() |> chomp.map(expr.BooleanPattern) },
       fn(_) { parse_char() |> chomp.map(expr.CharPattern) },
-      fn(_) { parse_identifier() |> chomp.map(expr.IdentifierPattern) },
       fn(config) {
         delimited(
           try_token(token.ListStart),
@@ -1094,21 +1321,15 @@ fn parse_pattern() -> Parser(expr.Pattern) {
         delimited(
           try_token(token.MapStart),
           sequence_trailing(
-            chomp.one_of([
-              try_token(token.Spread) |> chomp.replace(expr.RestEntry),
-              {
-                use key <- do_in(
-                  "map pattern entry",
-                  pratt.sub_expression(config, 0),
-                )
-                use _ <- do_in("map pattern entry", try_token(token.Colon))
-                use value <- do_in(
-                  "map pattern entry",
-                  pratt.sub_expression(config, 0),
-                )
-                return(expr.Entry(key:, value:))
-              },
-            ]),
+            {
+              use key <- do_in(
+                "map pattern entry",
+                pratt.sub_expression(config, 0),
+              )
+              use _ <- do(try_token(token.Colon))
+              use value <- do(pratt.sub_expression(config, 0))
+              return(expr.MapPatternEntry(key:, value:))
+            },
             try_token(token.Comma),
           ),
           try_token(token.RBrace),
@@ -1118,7 +1339,7 @@ fn parse_pattern() -> Parser(expr.Pattern) {
       },
       fn(_) {
         use _ <- do_in("type pattern", try_token(token.Is))
-        use it <- do_in("type pattern", parse_type())
+        use it <- do(parse_type())
         return(expr.TypePattern(it))
       },
       pratt.prefix(3, try_token(token.DotDotEq), fn(max) {
@@ -1152,7 +1373,7 @@ fn parse_pattern() -> Parser(expr.Pattern) {
 fn parse_generic_args() -> Parser(List(types.GenericArg)) {
   delimited(
     try_token(token.Lt),
-    sequence_trailing(
+    sequence_trailing1(
       {
         use name <- do_in(
           "generic argument",
@@ -1179,7 +1400,7 @@ fn parse_generic_args() -> Parser(List(types.GenericArg)) {
 fn parse_generic_params() -> Parser(List(types.GenericParam)) {
   delimited(
     try_token(token.Lt),
-    sequence_trailing(
+    sequence_trailing1(
       {
         use name <- do(parse_identifier())
         use constraint <- do(
@@ -1256,14 +1477,35 @@ fn sequence_trailing(
   parser: Parser(a),
   separator sep: Parser(x),
 ) -> Parser(List(a)) {
-  use items <- do(chomp.sequence(parser, sep))
+  use xs <- chomp.loop([])
 
-  case items {
-    [] -> return([])
-    items -> {
-      // optional trailing separator
-      use _ <- do(chomp.optional(sep))
-      return(items)
-    }
+  let end_of_sequence = fn(xs) {
+    use <- chomp.lazy
+    return(chomp.Break(list.reverse(xs)))
   }
+
+  let continue = {
+    use x <- do(parser)
+    chomp.one_of([
+      sep |> chomp.replace(chomp.Continue([x, ..xs])),
+      end_of_sequence([x, ..xs]),
+    ])
+  }
+
+  chomp.one_of([continue, end_of_sequence(xs)])
+}
+
+fn sequence_trailing1(
+  parser: Parser(a),
+  separator sep: Parser(x),
+) -> Parser(List(a)) {
+  use x <- do(parser)
+  use xs <- do(
+    {
+      use _ <- do(sep)
+      sequence_trailing1(parser, sep)
+    }
+    |> chomp.or([]),
+  )
+  return([x, ..xs])
 }
