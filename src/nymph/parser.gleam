@@ -202,9 +202,9 @@ fn parse_enum_variant() {
   use fields <- do(
     chomp.or(
       delimited(
-        try_token(token.LBrace),
+        try_token(token.LParen),
         sequence_trailing(parse_struct_field(), try_token(token.Comma)),
-        try_token(token.RBrace),
+        try_token(token.RParen),
       ),
       [],
     ),
@@ -1556,13 +1556,21 @@ fn sequence_trailing1(
   parser: Parser(a),
   separator sep: Parser(x),
 ) -> Parser(List(a)) {
-  use x <- do(parser)
-  use xs <- do(
-    {
-      use _ <- do(sep)
-      sequence_trailing1(parser, sep)
-    }
-    |> chomp.or([]),
-  )
-  return([x, ..xs])
+  use xs <- chomp.loop([])
+
+  let end_of_sequence = fn(xs) {
+    use <- chomp.lazy
+    use _ <- do(optional(sep))
+    return(chomp.Break(list.reverse(xs)))
+  }
+
+  let continue = {
+    use x <- do(parser)
+    chomp.one_of([
+      sep |> chomp.replace(chomp.Continue([x, ..xs])),
+      end_of_sequence([x, ..xs]),
+    ])
+  }
+
+  chomp.one_of([continue, end_of_sequence(xs)])
 }

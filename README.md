@@ -6,6 +6,7 @@
 ```sh
 gleam add nymph_lang@1
 ```
+
 ```gleam
 import nymph_lang
 

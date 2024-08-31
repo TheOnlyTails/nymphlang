@@ -10,7 +10,20 @@ import pprint
 pub fn main() {
   let source =
     "
-    #(a, ...a, b, ...b,)
+    enum Option<T> {
+      Some(value: T),
+      None,
+
+      func is_some() -> match (this) {
+        Some { ... } -> true,
+        None -> false,
+      }
+
+      func map<R>(f: (T) -> R) -> match (this) {
+        Some { value } -> Some(f(value)),
+        None -> None
+      }
+    }
     "
     |> dedent.dedent
 
@@ -29,5 +42,5 @@ pub fn main() {
     }
   }
 
-  run(tokens, parser.parse_expr()) |> pprint.debug
+  run(tokens, parser.parser()) |> pprint.debug
 }
