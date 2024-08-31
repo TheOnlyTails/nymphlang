@@ -31,9 +31,9 @@ pub fn lexer() -> lexer.Lexer(NymphToken, LexMode) {
     case mode {
       Normal(nesting) -> [
         // int literals
-        number_lexer(2, "[01]", "0b", token.BinaryInt),
-        number_lexer(8, "[0-7]", "0o", token.OctalInt),
-        number_lexer(16, "[a-fA-F\\d]", "0x", token.HexInt),
+        number_lexer(2, "[01]", "b", token.BinaryInt),
+        number_lexer(8, "[0-7]", "o", token.OctalInt),
+        number_lexer(16, "[a-fA-F\\d]", "x", token.HexInt),
         number_lexer(10, "\\d", "", token.DecimalInt),
         // float literals
         float_both_lexer(),
@@ -194,13 +194,15 @@ fn number_lexer(
   token: fn(Int) -> NymphToken,
 ) -> lexer.Matcher(NymphToken, LexMode) {
   use text, mode <- then_try(regex_lexer_options(
-    "^" <> prefix <> "((?!0)" <> digit <> "(_?" <> digit <> ")*|0)$",
-    case string.is_empty(prefix) {
-      False -> "[" <> prefix <> "]|"
-      True -> ""
-    }
+    "^" <> prefix <> digit <> "(_?" <> digit <> ")*$",
+    {
+      case string.is_empty(prefix) {
+        False -> "[" <> prefix <> "]|"
+        True -> ""
+      }
       <> digit
-      <> "|_",
+      <> "|_"
+    },
     regex.Options(case_insensitive: True, multi_line: False),
   ))
 
