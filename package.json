@@ -2,12 +2,18 @@
 	"name": "nymph-docs",
 	"private": true,
 	"type": "module",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/theonlytails/nymph_gleam.git"
+	},
 	"scripts": {
 		"dev": "vitepress dev docs",
 		"build": "vitepress build docs",
 		"preview": "vitepress preview docs"
 	},
 	"devDependencies": {
+		"@types/node": "^22.5.5",
+		"markdown-it-mathjax3": "^4.3.2",
 		"prettier": "^3.3.3",
 		"vitepress": "^1.3.4",
 		"vue": "^3.4.38"

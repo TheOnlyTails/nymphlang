@@ -16,13 +16,13 @@ import nymph/parser/token
 type Parser(a) =
   chomp.Parser(a, String, token.NymphToken, String)
 
-pub fn parser() -> Parser(declaration.Module) {
-  parse_module()
+pub fn parser(path) -> Parser(declaration.Module) {
+  parse_module(path)
 }
 
-fn parse_module() {
+fn parse_module(path) {
   chomp.until_end(parse_declaration())
-  |> chomp.map(declaration.Module)
+  |> chomp.map(declaration.Module(path:, members: _))
 }
 
 fn parse_declaration() {
@@ -70,7 +70,6 @@ fn parse_struct(visibility) {
 
 fn parse_struct_field() {
   use visibility <- do_in("struct field", optional(parse_visibility()))
-  use mutable <- do(optional(try_token(token.Mut)) |> chomp.map(option.is_some))
   use name <- do(parse_identifier())
   use _ <- do(try_token(token.Colon))
   use type_ <- do(parse_type())
@@ -82,7 +81,7 @@ fn parse_struct_field() {
     }),
   )
 
-  return(declaration.StructField(default:, mutable:, name:, type_:, visibility:))
+  return(declaration.StructField(default:, name:, type_:, visibility:))
 }
 
 fn parse_struct_inner_member() {
@@ -298,6 +297,9 @@ fn parse_let(visibility) {
 
 pub fn parse_func_interface() {
   use visibility <- do(optional(parse_visibility()))
+  use external <- do(
+    optional(try_token(token.External)) |> chomp.map(option.is_some),
+  )
   use _ <- do_in("function declaration", try_token(token.Func))
   use name <- do(parse_identifier())
   use generics <- do(chomp.or(parse_generic_params(), []))
@@ -324,6 +326,7 @@ pub fn parse_func_interface() {
   return(declaration.InterfaceFunc(
     declaration.FuncDeclaration(
       visibility:,
+      external:,
       name:,
       generics:,
       params:,
@@ -369,7 +372,7 @@ fn parse_func_param() -> Parser(expr.FuncParam) {
     "function parameter",
     optional(try_token(token.Spread)) |> chomp.map(option.is_some),
   )
-  use name <- do(chomp.backtrackable(parse_pattern()))
+  use name <- do(parse_identifier())
   use _ <- do(try_token(token.Colon))
   use type_ <- do(parse_type())
   use default <- do(
@@ -431,6 +434,7 @@ fn parse_import() {
 pub fn parse_expr() {
   pratt.expression(
     one_of: [
+      parse_struct_literal,
       fn(_) { parse_block_expr() },
       fn(_) { parse_identifier() |> chomp.map(expr.Identifier) },
       fn(_) { parse_int() |> chomp.map(expr.Int) },
@@ -994,6 +998,35 @@ fn parse_in_range() {
   )
 }
 
+fn parse_struct_literal(config) -> Parser(expr.Expr) {
+  use name <- do_in("struct literal", parse_identifier())
+  use generics <- do(optional(parse_generic_args()))
+  use _ <- do(try_token(token.DoubleColon))
+  use fields <- do(delimited(
+    try_token(token.LBrace),
+    sequence_trailing1(
+      chomp.one_of([
+        {
+          use name <- do(parse_identifier())
+          use _ <- do(try_token(token.Colon))
+          use value <- do(parse_expr(config))
+          return(expr.NamedField(name:, value:))
+        },
+        parse_identifier() |> chomp.map(expr.ShorthandField),
+        {
+          use _ <- do(try_token(token.Spread))
+          use iterable <- do(parse_expr(config))
+          return(expr.StructLiteralField(iterable:))
+        },
+      ]),
+      try_token(token.Comma),
+    ),
+    try_token(token.RBrace),
+  ))
+
+  return(expr.Struct(name:, generics:, fields:))
+}
+
 fn parse_closure(config) -> Parser(expr.Expr) {
   config
   |> pratt.prefix_custom(
@@ -1421,7 +1454,7 @@ fn parse_pattern() -> Parser(expr.Pattern) {
       pratt.infix(pratt.Left(2), try_token(token.DotDotEq), fn(min, max) {
         expr.RangePattern(expr.InclusivePatternBoth(min, max))
       }),
-      pratt.infix(pratt.Left(1), try_token(token.Pipe), expr.DisjunctionPattern),
+      pratt.infix(pratt.Left(1), try_token(token.Pipe), expr.UnionPattern),
     ],
     or_error: "Expected pattern",
   )

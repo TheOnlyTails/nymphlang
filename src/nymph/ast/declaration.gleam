@@ -1,12 +1,8 @@
 import gleam/dict.{type Dict}
 import gleam/option.{type Option}
-import nymph/ast/expr.{type Expr, type FuncParam}
+import nymph/ast/expr.{type Expr}
 import nymph/ast/types.{type GenericArg, type GenericParam, type Type}
 import nymph/ast/utils.{type Ident}
-
-pub type Module {
-  Module(members: List(Declaration))
-}
 
 pub type Declaration {
   /// An `import` declaration imports an external module into the current module,
@@ -24,7 +20,9 @@ pub type Declaration {
   /// ```
   Import(path: List(Ident), idents: Option(Dict(Ident, Option(Ident))))
   Let(meta: LetDeclaration, value: Expr)
+  ExternalLet(meta: LetDeclaration)
   Func(meta: FuncDeclaration, body: Expr)
+  ExternalFunc(meta: FuncDeclaration)
   /// Redefines a type with a new name.
   /// ```
   /// type VeryVeryNested = #[#(#{#[int]: #(string, float)}, #[boolean)] // don't do this
@@ -162,6 +160,10 @@ pub type FuncDeclaration {
   )
 }
 
+pub type FuncParam {
+  FuncParam(name: Ident, type_: Type, default: Option(Expr), spread: Bool)
+}
+
 pub type StructField {
   StructField(
     visibility: Option(Visibility),
@@ -184,7 +186,7 @@ pub type StructInnerMember {
 
 pub type ImplMember {
   ImplLet(meta: LetDeclaration, value: Expr)
-  ImplFunc(meta: FuncDeclaration, body: Expr)
+  ImplFunc(meta: FuncDeclaration, mutable: Bool, body: Expr)
 }
 
 pub type InterfaceMember {
@@ -195,7 +197,7 @@ pub type InterfaceMember {
     members: List(ImplMember),
   )
   InterfaceLet(meta: LetDeclaration, value: Option(Expr))
-  InterfaceFunc(meta: FuncDeclaration, body: Option(Expr))
+  InterfaceFunc(meta: FuncDeclaration, mutable: Bool, body: Option(Expr))
 }
 
 pub type EnumVariant {

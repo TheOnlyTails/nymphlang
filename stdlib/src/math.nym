@@ -1,0 +1,54 @@
+public func abs(x: int) -> if (x > 0) x else -x
+public func abs(x: float) -> if (x > 0) x else -x
+
+external public func sin(x: float): float
+external public func sec(x: float): float
+external public func cos(x: float): float
+external public func csc(x: float): float
+external public func tan(x: float): float
+external public func cot(x: float): float
+
+external public func asin(x: float): float
+external public func asec(x: float): float
+external public func acos(x: float): float
+external public func acsc(x: float): float
+external public func atan(x: float): float
+external public func acot(x: float): float
+
+external public func sinh(x: float): float
+external public func sech(x: float): float
+external public func cosh(x: float): float
+external public func csch(x: float): float
+external public func tanh(x: float): float
+external public func coth(x: float): float
+
+external public func asinh(x: float): float
+external public func asech(x: float): float
+external public func acosh(x: float): float
+external public func acsch(x: float): float
+external public func atanh(x: float): float
+external public func acoth(x: float): float
+
+external public func atan2(y: float, x: float): float
+
+public func sign(x: int) -> match (x) {
+  0 -> 0
+  1.. -> 1
+  ..=-1 -> -1
+}
+public func sign(x: float) -> match (x) {
+  0 -> 0
+  1.. -> 1
+  ..=-1 -> -1
+}
+external public func floor(x: float): int
+external public func ceil(x: float): int
+external public func round(x: float): int
+
+public func midpoint(x: int, y: int) -> (x + y) / 2
+public func midpoint(x: float, y: float) -> (x + y) / 2
+
+external public let max_int: int
+external public let min_int: int
+external public let max_float: float
+external public let min_float: float

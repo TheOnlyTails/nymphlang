@@ -18,10 +18,10 @@ pub type LexMode {
 fn reserved() -> set.Set(String) {
   [
     "true", "false", "public", "internal", "private", "import", "with", "let",
-    "mut", "func", "type", "struct", "enum", "impl", "interface", "namespace",
-    "for", "while", "match", "if", "else", "int", "float", "char", "string",
-    "boolean", "void", "never", "as", "is", "in", "continue", "break", "return",
-    "this", "_",
+    "mut", "external", "func", "type", "struct", "enum", "impl", "interface",
+    "namespace", "for", "while", "match", "if", "else", "int", "float", "char",
+    "string", "boolean", "void", "never", "as", "is", "in", "continue", "break",
+    "return", "this", "_",
   ]
   |> set.from_list
 }
@@ -84,6 +84,7 @@ pub fn lexer() -> lexer.Lexer(NymphToken, LexMode) {
         lexer.keyword("enum", "[^$_a-zA-Z]", token.Enum),
         lexer.keyword("let", "[^$_a-zA-Z]", token.Let),
         lexer.keyword("mut", "[^$_a-zA-Z]", token.Mut),
+        lexer.keyword("external", "[^$_a-zA-Z]", token.External),
         lexer.keyword("func", "[^$_a-zA-Z]", token.Func),
         lexer.keyword("interface", "[^$_a-zA-Z]", token.Interface),
         lexer.keyword("impl", "[^$_a-zA-Z]", token.Impl),
@@ -110,7 +111,8 @@ pub fn lexer() -> lexer.Lexer(NymphToken, LexMode) {
         lexer.keyword(".", "[^=\\.\\d]", token.Dot),
         lexer.token("@", token.AtSign),
         lexer.token(",", token.Comma),
-        lexer.token(":", token.Colon),
+        lexer.keyword(":", "[^:]", token.Colon),
+        lexer.token("::", token.DoubleColon),
         lexer.keyword("_", "[^$_a-zA-Z]", token.Underscore),
         lexer.token("|>", token.Triangle),
         lexer.token("++", token.PlusPlus),

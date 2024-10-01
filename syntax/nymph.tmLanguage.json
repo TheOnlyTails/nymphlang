@@ -1,0 +1,136 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Nymph",
+	"patterns": [
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#constant"
+		},
+		{
+			"include": "#entity"
+		},
+		{
+			"include": "#discards"
+		}
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.nymph",
+					"match": "\\b(public|internal|private|import|with|let|mut|external|func|type|struct|enum|impl|interface|namespace|for|while|match|if|else|int|float|char|string|boolean|void|never|as|is|in|continue|break|return|this)\\b"
+				},
+				{
+					"name": "constant.language.boolean.nymph",
+					"match": "\\b(true|false)\\b"
+				},
+				{
+					"name": "keyword.operator."
+				}
+			]
+		},
+		"strings": {
+			"name": "string.quoted.double.nymph",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.nymph",
+					"match": "\\\\."
+				}
+			]
+		},
+		"boolean": { "name": "keyword.control.boolean", "match": "\b(true|false)\b" },
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.nymph",
+					"match": "//.*"
+				}
+			]
+		},
+		"constant": {
+			"patterns": [
+				{
+					"include": "#binary_number"
+				},
+				{
+					"include": "#octal_number"
+				},
+				{
+					"include": "#hexadecimal_number"
+				},
+				{
+					"include": "#decimal_number"
+				},
+				{
+					"include": "#boolean"
+				},
+				{
+					"name": "entity.name.type.nymph",
+					"match": "[[:upper:]][[:alnum:]]*"
+				}
+			]
+		},
+		"binary_number": {
+			"name": "constant.numeric.binary.nymph",
+			"match": "\\b0[bB]0*1[01_]*\\b",
+			"patterns": []
+		},
+		"octal_number": {
+			"name": "constant.numeric.octal.nymph",
+			"match": "\\b0[oO]0*[1-7][0-7]*\\b",
+			"patterns": []
+		},
+		"decimal_number": {
+			"name": "constant.numeric.decimal.nymph",
+			"match": "\\b(0*[1-9][0-9_]*|0)(\\.(0*[1-9][0-9_]*|0)?(e-?0*[1-9][0-9]*)?)?\\b",
+			"patterns": []
+		},
+		"hexadecimal_number": {
+			"name": "constant.numeric.hexadecimal.nymph",
+			"match": "\\b0[xX]0*[1-9a-zA-Z][0-9a-zA-Z]*\\b",
+			"patterns": []
+		},
+		"entity": {
+			"patterns": [
+				{
+					"begin": "\\b([[:lower:]][[:word:]]*)\\b[[:space:]]*\\(",
+					"end": "\\)",
+					"patterns": [
+						{
+							"include": "$self"
+						}
+					],
+					"captures": {
+						"1": {
+							"name": "entity.name.function.nymph"
+						}
+					}
+				},
+				{
+					"name": "variable.parameter.nymph",
+					"match": "\\b([[:lower:]][[:word:]]*):\\s"
+				},
+				{
+					"name": "entity.name.namespace.nymph",
+					"match": "\\b([[:lower:]][[:word:]]*):"
+				}
+			]
+		},
+		"discards": {
+			"name": "comment.unused.nymph",
+			"match": "\\b_(?:[[:word:]]+)?\\b"
+		}
+	},
+	"scopeName": "source.nymph",
+	"fileTypes": ["nym"]
+}
