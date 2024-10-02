@@ -22,7 +22,7 @@ pub type Declaration {
   Let(meta: LetDeclaration, value: Expr)
   ExternalLet(meta: LetDeclaration)
   Func(meta: FuncDeclaration, body: Expr)
-  ExternalFunc(meta: FuncDeclaration)
+  ExternalFunc(meta: FuncDeclaratexternalion)
   /// Redefines a type with a new name.
   /// ```
   /// type VeryVeryNested = #[#(#{#[int]: #(string, float)}, #[boolean)] // don't do this
@@ -119,8 +119,7 @@ pub type Declaration {
   ImplFor(
     visibility: Option(Visibility),
     generics: List(GenericParam),
-    super_name: Ident,
-    super_generics: List(GenericArg),
+    super_type: Type,
     sub_name: Ident,
     sub_generics: List(GenericArg),
     members: List(ImplMember),

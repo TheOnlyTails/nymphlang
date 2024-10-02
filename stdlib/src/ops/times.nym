@@ -1,0 +1,30 @@
+interface Times<Other, Output> {
+  func times(other: Other): Output
+}
+
+impl Times<Other = int, Output = int> for int {
+  external func times(other: int): int
+}
+
+impl Times<Other = float, Output = float> for int {
+  external func times(other: float): float
+}
+
+impl Times<Other = float, Output = float> for float {
+  external func times(other: float): float
+}
+
+impl Times<Other = int, Output = float> for float {
+  external func times(other: int): float
+}
+
+impl Times<Other = int, Output = string> for string {
+  func times(other: int) -> 
+}
+
+impl<T> Times<Other = int, Output = #[T]> for #[T] {
+  func times(other: int) -> match this {
+    #[] -> #[],
+    _ -> (1..other).fold(this, (acc, _) -> acc + this)
+  }
+}

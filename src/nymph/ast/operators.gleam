@@ -22,7 +22,7 @@ pub type BinaryOperator {
   /// /
   Divide
   /// %
-  Modulus
+  Remainder
   /// **
   Power
   /// &
@@ -31,6 +31,8 @@ pub type BinaryOperator {
   BitOr
   /// ^
   BitXor
+  /// ~
+  BitNot
   /// <<
   LeftShift
   /// >>
@@ -74,13 +76,14 @@ pub type AssignOperator {
   MinusAssign
   TimesAssign
   DivideAssign
-  ModulusAssign
+  RemainderAssign
   PowerAssign
   LeftShiftAssign
   RightShiftAssign
   BitAndAssign
   BitXorAssign
   BitOrAssign
+  BitNotAssign
   BoolAndAssign
   BoolOrAssign
 }

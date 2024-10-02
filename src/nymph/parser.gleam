@@ -513,12 +513,17 @@ pub fn parse_expr() {
         operators.Negate,
         _,
       )),
-      // boolean NOT
+      // boolean not
       pratt.prefix(
         precedence.unary_op,
         try_token(token.ExclamationMark),
         expr.PrefixOp(operators.Not, _),
       ),
+      // bitwise not
+      pratt.prefix(precedence.unary_op, try_token(token.Tilde), expr.PrefixOp(
+        operators.BitNot,
+        _,
+      )),
       parse_closure,
       fn(config) {
         delimited(
@@ -557,7 +562,7 @@ pub fn parse_expr() {
         operators.Power,
         expr.BinaryOp,
       ),
-      // multiplication/division/modulus
+      // multiplication/division/remainder
       infix_op(
         pratt.Left(precedence.times_divide),
         token.Star,
@@ -573,7 +578,7 @@ pub fn parse_expr() {
       infix_op(
         pratt.Left(precedence.times_divide),
         token.Percent,
-        operators.Modulus,
+        operators.Remainder,
         expr.BinaryOp,
       ),
       // addition/subtraction
@@ -724,7 +729,7 @@ pub fn parse_expr() {
       infix_op(
         pratt.Left(precedence.assignment),
         token.PercentEq,
-        operators.ModulusAssign,
+        operators.RemainderAssign,
         expr.AssignOp,
       ),
       infix_op(
@@ -761,6 +766,12 @@ pub fn parse_expr() {
         pratt.Left(precedence.assignment),
         token.CaretEq,
         operators.BitXorAssign,
+        expr.AssignOp,
+      ),
+      infix_op(
+        pratt.Left(precedence.assignment),
+        token.TildeEq,
+        operators.BitNotAssign,
         expr.AssignOp,
       ),
       infix_op(

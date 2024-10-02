@@ -192,7 +192,7 @@ fn type_of(expr: Expr, env: Env) -> Result(Type, Nil) {
         | types.FloatType, operators.Divide, types.FloatType
         -> Ok(types.FloatType)
         // %
-        types.IntType, operators.Modulus, types.IntType -> Ok(types.IntType)
+        types.IntType, operators.Remainder, types.IntType -> Ok(types.IntType)
         // **
         types.IntType, operators.Power, types.IntType
         | types.IntType, operators.Power, types.FloatType
@@ -277,12 +277,15 @@ fn type_of(expr: Expr, env: Env) -> Result(Type, Nil) {
 
             Ok(#(
               inferred_type,
-              dict.merge(
-                env.items,
-                destructured_names
-                  |> dict.map_values(fn(_, it) {
-                    DataValue(inferred_type, mutable:)
-                  }),
+              Env(
+                ..env,
+                items: dict.merge(
+                  env.items,
+                  destructured_names
+                    |> dict.map_values(fn(_, type_) {
+                      DataValue(type_:, mutable:)
+                    }),
+                ),
               ),
             ))
           }
@@ -325,7 +328,15 @@ fn type_of(expr: Expr, env: Env) -> Result(Type, Nil) {
         }
       }
     Struct(name:, generics:, fields:) -> todo
-    This -> Ok(env.context)
+    This ->
+      env.context
+      |> option.to_result(Nil)
+      |> result.map(fn(it) {
+        types.StructType(
+          members: it.items
+          |> list.map(fn(val) { todo }),
+        )
+      })
     While(body:, ..) -> todo
   }
 }
